@@ -83,9 +83,38 @@ Every state-mutating transition emits a typed Soroban contract event:
 
 ---
 
-## Reporting Security Vulnerabilities
+---
 
-Please report security issues using **GitHub Private Vulnerability Reporting**:
-1. Navigate to the repository's **Security** tab on GitHub.
-2. Click on **Advisories** and select **Report a vulnerability**.
-3. Provide detailed steps to reproduce the issue, environment details, test cases, and potential impact.
+## Security Scope
+
+### In-Scope
+- `contracts/settlement-registry/src/lib.rs` (contract entrypoints and interface)
+- `contracts/settlement-registry/src/auth.rs` (role-based authentication & authorization invariants)
+- `contracts/settlement-registry/src/storage.rs` (state persistence & key management)
+- `contracts/settlement-registry/src/types.rs` (protocol data types & status transitions)
+- `contracts/settlement-registry/src/events.rs` (event schemas & emission completeness)
+- `contracts/settlement-registry/src/errors.rs` (error handling & state invariants)
+
+### Out-of-Scope
+- Stellar Core consensus protocol & Soroban host environment internals
+- Upstream Rust compiler and third-party dependencies (`soroban-sdk`)
+- Off-chain mock test harness and fixture generators
+- Client-side application integrations (see [`StellarClear/stellarclear`](https://github.com/StellarClear/stellarclear) for service-level security)
+
+---
+
+## Reporting Security Vulnerabilities & Responsible Disclosure
+
+We take the security of StellarClear seriously. If you discover a vulnerability, please report it responsibly:
+
+1. **GitHub Security Advisory (Preferred)**:
+   - Navigate to the repository's [Security Advisories](https://github.com/StellarClear/stellarclear-contract/security/advisories) tab.
+   - Click **"Report a vulnerability"** to submit a private disclosure.
+2. **Direct Security Contact**:
+   - **Email**: `security@stellarclear.org` / `adejumooluwasegun35@gmail.com`
+   - **Telegram**: [@adejumo2](https://t.me/adejumo2) or [@smog123](https://t.me/smog123)
+3. **Disclosure Timeline**:
+   - We will acknowledge receipt of your report within **24 hours**.
+   - We will provide an assessment and mitigation plan within **72 hours**.
+   - Please do not disclose vulnerabilities publicly until a patch has been released and verified.
+
