@@ -130,10 +130,10 @@ sha256sum target/wasm32v1-none/release/settlement_registry.wasm
 
 ## Maintainers
 
-| Name | GitHub | Telegram | Role |
-| :--- | :--- | :--- | :--- |
-| **Adejumo** | [@Adejumo-2](https://github.com/Adejumo-2) | [@adejumo2](https://t.me/adejumo2) | Lead Developer & Maintainer |
-| **Smog** | [@smog123](https://github.com/smog123) | [@smog123](https://t.me/smog123) | Core Contributor & Maintainer |
+| Name | GitHub | Role |
+| :--- | :--- | :--- |
+| **Adejumo** | [@Adejumo-2](https://github.com/Adejumo-2) | Lead Developer & Maintainer |
+| **Smog** | [@smog123](https://github.com/smog123) | Core Contributor & Maintainer |
 
 ---
 
@@ -141,7 +141,6 @@ sha256sum target/wasm32v1-none/release/settlement_registry.wasm
 
 - **GitHub Discussions**: [Ask questions and share ideas](https://github.com/StellarClear/stellarclear-contract/discussions)
 - **GitHub Issues**: [Report bugs or suggest features](https://github.com/StellarClear/stellarclear-contract/issues)
-- **Telegram Group**: [StellarClear Community](https://t.me/stellarclear)
 - **Protocol Monorepo**: [StellarClear SDK, API & Indexer](https://github.com/StellarClear/stellarclear)
 
 ---
