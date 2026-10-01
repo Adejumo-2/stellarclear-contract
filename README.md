@@ -148,23 +148,13 @@ sha256sum target/wasm32v1-none/release/settlement_registry.wasm
 
 ---
 
-## Current Status & Disclaimer
-
-> [!WARNING]
-> **UNAUDITED SOFTWARE**: This smart contract is under active development and has not undergone formal verification or an independent security audit. Do not use this contract in production environments handling real financial value without prior audit.
-
----
-
-## Funding (Drips)
-
-This repo is claimable on [Drips](https://www.drips.network). Ownership is proven via `FUNDING.json` on the default branch (`main`).
-
-> `FUNDING.json` currently contains a placeholder `0x0000...` address. Maintainers: replace it with the project owner address during the Drips claim flow.
-
 ## Contributing
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
+---
+
 ## License
 
 Apache-2.0 — see [`LICENSE`](./LICENSE).
+
