@@ -23,7 +23,7 @@ This document details the complete contract release, security review, reproducib
 | **Release Version** | `0.1.0` |
 | **Release Tag** | `v0.1.0` |
 | **WASM Artifact** | [`artifacts/settlement_registry.wasm`](./artifacts/settlement_registry.wasm) |
-| **SHA-256 Checksum** | `1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66` |
+| **SHA-256 Checksum** | `60d38795a59b31cd9dd15605b7269957fc88e8ff19a16bd8eee8cb2d5e78b30d` |
 | **WASM Size** | `22,722 bytes` (optimized) |
 | **Compilation Target** | `wasm32v1-none` |
 | **Soroban SDK** | `27.0.4` |
@@ -141,7 +141,7 @@ The `release-manifest.json` provides comprehensive machine-readable provenance:
   "git_branch": "feat/settlement-registry-protocol",
   "timestamp": "2026-09-30T07:48:30Z",
   "wasm_file": "settlement_registry.wasm",
-  "wasm_sha256": "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66",
+  "wasm_sha256": "60d38795a59b31cd9dd15605b7269957fc88e8ff19a16bd8eee8cb2d5e78b30d",
   "wasm_size_bytes": 22722,
   "rustc_version": "rustc 1.84.0",
   "stellar_cli_version": "stellar 28.1.0",

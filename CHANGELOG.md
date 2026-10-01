@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Terminal-state immutability and duplicate call prevention tests.
   - 102 automated tests passing with zero warnings.
 - **Reproducible Release Artifact Packaging & Verification**:
-  - Deterministic WebAssembly compilation (`wasm32v1-none`) with SHA-256 checksum `1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66`.
+  - Deterministic WebAssembly compilation (`wasm32v1-none`) with SHA-256 checksum `60d38795a59b31cd9dd15605b7269957fc88e8ff19a16bd8eee8cb2d5e78b30d`.
   - Machine-readable release provenance manifest (`artifacts/release-manifest.json` and `artifacts/v0.1.0/`).
   - Release chain integration verification test suite (`tests/release_artifact.rs`).
   - Programmatic deployed testnet verification matrix (`tests/deployed_testnet.rs`).
