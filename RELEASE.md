@@ -24,7 +24,7 @@ This document details the complete contract release, security review, reproducib
 | **Release Tag** | `v0.1.0` |
 | **WASM Artifact** | [`artifacts/settlement_registry.wasm`](./artifacts/settlement_registry.wasm) |
 | **SHA-256 Checksum** | `60d38795a59b31cd9dd15605b7269957fc88e8ff19a16bd8eee8cb2d5e78b30d` |
-| **WASM Size** | `22,722 bytes` (optimized) |
+| **WASM Size** | `25,632 bytes` (optimized) |
 | **Compilation Target** | `wasm32v1-none` |
 | **Soroban SDK** | `27.0.4` |
 | **Stellar CLI** | `28.1.0` |
