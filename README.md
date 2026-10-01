@@ -1,7 +1,7 @@
 # StellarClear Contract (`stellarclear-contract`)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/StellarClear/stellarclear-contract/main/docs/assets/banner.png" alt="StellarClear Banner" width="100%" />
+  <img src="./docs/assets/banner.jpeg" alt="StellarClear Banner" width="100%" />
 </p>
 
 <p align="center">
