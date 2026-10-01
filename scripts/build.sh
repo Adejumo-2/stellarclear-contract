@@ -18,12 +18,18 @@ fi
 VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f 2 || echo "0.1.0")"
 echo "Target Contract Version: $VERSION"
 
-echo "Building reproducible contract via stellar CLI..."
+echo "Building reproducible contract..."
+
+# Set reproducible build flags
+export CARGO_BUILD_RUSTFLAGS="--remap-path-prefix=$(pwd)= -C opt-level=z -C link-arg=-s"
+export RUSTFLAGS="--remap-path-prefix=$(pwd)= -C opt-level=z -C link-arg=-s"
+
+# Use consistent stellar CLI build
 if command -v stellar &>/dev/null; then
     stellar contract build
 else
-    echo "stellar CLI not found in PATH, falling back to cargo rustc..."
-    CARGO_BUILD_RUSTFLAGS="--remap-path-prefix=$(pwd)=" cargo rustc \
+    # Fallback with explicit reproducible flags
+    cargo rustc \
         --manifest-path contracts/settlement-registry/Cargo.toml \
         --crate-type cdylib \
         --target wasm32v1-none \
