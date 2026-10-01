@@ -49,7 +49,7 @@ This repository contains the authoritative smart contract layer (`SettlementRegi
 The contract is authoritative for:
 - **Settlement Lifecycle**: Strict state machine enforcement across all case stages.
 - **Commitment Anchoring**: Deterministic 32-byte SHA-256 hashes for terms, observations, and dispute resolutions.
-- **Observer Registry**: Whitelisted observer management controlled by contract administration.
+- **Observer Registry**: Whitelisted observer management (`add_observer`, `remove_observer`) authorized by the contract administrator.
 - **Reconciliation Decisions**: Categorized decision records (`Matched` or `Break` with standardized `BreakCode`).
 - **Two-Party Disputes**: Permissionless dispute submission and dual-party resolution agreements.
 - **Cryptographic Attestations**: Multi-party attestations (`Owner`, `Counterparty`, `Observer`).
@@ -62,7 +62,7 @@ The smart contract deliberately **does NOT**:
 - Store unencrypted, raw financial or private counterparty trade details on-chain.
 - Execute direct token transfers, custodial escrows, or liquidity movements.
 - Perform floating-point or non-deterministic mathematical operations.
-- Contain administrative backdoors or emergency state mutation bypasses.
+- Contain administrative backdoors or emergency state mutation bypasses (contract administration is strictly limited to managing observer registration and cannot alter case data, override decisions, or bypass state machine transitions).
 
 ---
 
@@ -81,7 +81,7 @@ Open ──► Observed ──┬──► Matched ─────────�
 ## Quick Start & Compilation
 
 ### Prerequisites
-- **Rust**: `1.84.0+`
+- **Rust**: `stable` (`1.84.0+` MSRV)
 - **Wasm Target**: `wasm32v1-none`
 - **Stellar CLI**: `28.1.0+`
 - **Soroban SDK**: `27.0.4+`

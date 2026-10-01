@@ -36,4 +36,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Security model, authorization matrix, threat model, and audit status in `SECURITY.md`.
   - Production/testnet release checklist, verification chain, and packaging specification in `RELEASE.md`.
   - Step-by-step deployment guide and testnet verification instructions in `DEPLOYMENT.md`.
-  - Drips protocol funding readiness in `FUNDING.json`.
+

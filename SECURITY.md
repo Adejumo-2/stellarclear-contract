@@ -42,7 +42,7 @@ The `SettlementRegistry` contract enforces strict role-based access control, cry
 - **Terminal Immutability**:
   - Once a settlement case reaches `Finalized`, it enters a permanently terminal, read-only state.
   - No subsequent observations, reconciliation decisions, attestations, disputes, resolutions, or finalizations can mutate a finalized case.
-  - The contract contains **no backdoors, administrative state overrides, or emergency mutation bypasses**.
+  - The contract contains **no backdoors, administrative state overrides, or emergency mutation bypasses** (contract administration is strictly restricted to observer registry management and cannot alter case data, override decisions, or mutate settlement records).
 
 ---
 
