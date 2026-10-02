@@ -13,22 +13,34 @@ This document details the complete contract release, security review, reproducib
 
 ---
 
-## 📦 StellarClear Contract v0.1.0 Release Overview
+## 📦 StellarClear Contract Release & Provenance Overview
 
-### Release Summary
+### Provenance Distinction
 
-| Property | Value |
-| :--- | :--- |
-| **Contract Name** | `settlement_registry` |
-| **Release Version** | `0.1.0` |
-| **Release Tag** | `v0.1.0` |
-| **WASM Artifact** | [`artifacts/settlement_registry.wasm`](./artifacts/settlement_registry.wasm) |
-| **SHA-256 Checksum** | `625f32b9a6d54deed5372bce9dbea2124b120c58dc6772d2b53ee73000d13ef2` |
-| **WASM Size** | `25,615 bytes` (optimized) |
-| **Compilation Target** | `wasm32v1-none` |
-| **Soroban SDK** | `27.0.4` |
-| **Stellar CLI** | `28.1.0` |
-| **License** | Apache-2.0 |
+The StellarClear protocol maintains an immutable record of historical deployments alongside deterministic continuous-integration builds:
+
+#### 1. Immutable Deployed v0.1.0 Release
+- **Release Tag**: [`v0.1.0`](https://github.com/StellarClear/stellarclear-contract/releases/tag/v0.1.0)
+- **Tag Commit**: `3978e21cebb0a60bd3899e7b48d7b96e40479a3c`
+- **WASM SHA-256 Checksum**: `1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66`
+- **WASM Size**: `22,722 bytes` (optimized)
+- **Deployed Testnet Contract ID**: `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`
+- **Companion App Pinned Reference**: [`StellarClear/stellarclear-app`](https://github.com/StellarClear/stellarclear-app) (`packages/settlement-registry/src/release.ts`)
+
+> [!NOTE]
+> The bytecode hash `1018a81b...` corresponds strictly to the immutable `v0.1.0` release tag and the active testnet contract instance.
+
+#### 2. Main-Branch Reproducible Build
+- **Source Revision**: `17ee9d72ab488530b80d87481c9c7e21d948a310` (and subsequent `main` commits)
+- **Toolchain**: Rust Stable (`wasm32v1-none`), Soroban SDK `27.0.4`, Stellar CLI `28.1.0`
+- **WASM SHA-256 Checksum**: `625f32b9a6d54deed5372bce9dbea2124b120c58dc6772d2b53ee73000d13ef2`
+- **WASM Size**: `25,615 bytes` (optimized with deterministic flags)
+- **Artifact File**: [`artifacts/settlement_registry.wasm`](./artifacts/settlement_registry.wasm)
+- **Checksum File**: [`artifacts/settlement_registry.wasm.sha256`](./artifacts/settlement_registry.wasm.sha256)
+- **Release Manifest**: [`artifacts/release-manifest.json`](./artifacts/release-manifest.json)
+
+> [!IMPORTANT]
+> The bytecode hash `625f32b9...` represents a later reproducible rebuild on the stable toolchain and must NOT be mistaken for the deployed v0.1.0 bytecode (`1018a81b...`).
 
 ### Exported Smart Contract Functions (15)
 
@@ -137,21 +149,21 @@ The `release-manifest.json` provides comprehensive machine-readable provenance:
 {
   "contract_name": "settlement_registry",
   "version": "0.1.0",
-  "git_commit": "81d7a0eac4a54fb0a13d4e2515f7a7a1217fe2f9",
-  "git_branch": "feat/settlement-registry-protocol",
-  "timestamp": "2026-09-30T07:48:30Z",
+  "git_commit": "17ee9d72ab488530b80d87481c9c7e21d948a310",
+  "git_branch": "cleanup/repo-hygiene-and-docs",
+  "timestamp": "2026-10-01T22:37:09Z",
   "wasm_file": "settlement_registry.wasm",
-  "wasm_sha256": "60d38795a59b31cd9dd15605b7269957fc88e8ff19a16bd8eee8cb2d5e78b30d",
-  "wasm_size_bytes": 22722,
-  "rustc_version": "rustc 1.84.0",
-  "stellar_cli_version": "stellar 28.1.0",
+  "wasm_sha256": "625f32b9a6d54deed5372bce9dbea2124b120c58dc6772d2b53ee73000d13ef2",
+  "wasm_size_bytes": 25615,
+  "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "stellar_cli_version": "stellar 28.1.0 (c0f4d0da891bbf214c08b8c5035ae6db80e9a3bd)",
   "soroban_sdk_version": "27.0.4",
   "target": "wasm32v1-none",
   "networks": {
     "testnet": {
       "rpc_url": "https://soroban-testnet.stellar.org",
       "network_passphrase": "Test SDF Network ; September 2015",
-      "contract_id": ""
+      "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
     },
     "mainnet": {
       "rpc_url": "https://mainnet.sorobanrpc.com",
