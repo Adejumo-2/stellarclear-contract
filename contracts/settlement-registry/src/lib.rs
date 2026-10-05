@@ -50,9 +50,10 @@ use storage::{
     add_case_attested_observer, get_attestation_record, get_case_attested_observers,
     get_case_observer, get_case_record, get_dispute_expiration, get_resolution_record, has_admin,
     has_attestation_record, has_case_record, has_resolution_record, is_observer_registered,
-    remove_dispute_expiration, remove_observer_registered, set_admin, set_attestation_record,
-    set_case_observer, set_case_record, set_contract_version, set_dispute_expiration,
-    set_observer_registered, set_resolution_record, DEFAULT_DISPUTE_TTL_LEDGERS, PROTOCOL_VERSION,
+    remove_dispute_expiration, remove_observer_registered, remove_resolution_record, set_admin,
+    set_attestation_record, set_case_observer, set_case_record, set_contract_version,
+    set_dispute_expiration, set_observer_registered, set_resolution_record,
+    DEFAULT_DISPUTE_TTL_LEDGERS, PROTOCOL_VERSION,
 };
 use types::{
     Attestation, AttestationRole, BreakCode, CaseStatus, Decision, Observation, ObservationRecord,
@@ -520,6 +521,35 @@ impl SettlementRegistry {
         case.status = CaseStatus::Disputed;
         set_case_record(&env, &case_id, &case);
         emit_dispute_opened(&env, &case_id, &initiator, &dispute_commitment);
+        Ok(())
+    }
+
+    /// Permissionless: triggers expiration of an unaddressed dispute after TTL expires.
+    /// Transitions case back to Break with auto-break resolution.
+    pub fn expire_dispute(env: Env, case_id: BytesN<32>) -> Result<(), Error> {
+        validate_case_identity(&case_id)?;
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+
+        if case.status != CaseStatus::Disputed {
+            return Err(Error::InvalidState);
+        }
+
+        let exp = get_dispute_expiration(&env, &case_id).ok_or(Error::DisputeNotExpired)?;
+        let current_ledger = env.ledger().sequence();
+        if current_ledger < exp {
+            return Err(Error::DisputeNotExpired);
+        }
+
+        validate_state_transition(case.status, CaseStatus::Break)?;
+
+        remove_dispute_expiration(&env, &case_id);
+        remove_resolution_record(&env, &case_id, &case.owner);
+        if let Some(ref cp) = case.counterparty {
+            remove_resolution_record(&env, &case_id, cp);
+        }
+        case.dispute_expires_at_ledger = None;
+        case.status = CaseStatus::Break;
+        set_case_record(&env, &case_id, &case);
         Ok(())
     }
 

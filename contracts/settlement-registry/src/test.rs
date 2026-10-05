@@ -1249,6 +1249,7 @@ fn test_validate_state_transition_matrix() {
                     | (CaseStatus::Observed, CaseStatus::Break)
                     | (CaseStatus::Break, CaseStatus::Disputed)
                     | (CaseStatus::Disputed, CaseStatus::Resolved)
+                    | (CaseStatus::Disputed, CaseStatus::Break)
                     | (CaseStatus::Matched, CaseStatus::Finalized)
                     | (CaseStatus::Resolved, CaseStatus::Finalized)
             );
