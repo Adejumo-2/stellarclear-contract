@@ -48,10 +48,11 @@ use events::{
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
 use storage::{
     add_case_attested_observer, get_attestation_record, get_case_attested_observers,
-    get_case_observer, get_case_record, get_resolution_record, has_admin, has_attestation_record,
-    has_case_record, has_resolution_record, is_observer_registered, remove_observer_registered,
-    set_admin, set_attestation_record, set_case_observer, set_case_record, set_contract_version,
-    set_observer_registered, set_resolution_record, PROTOCOL_VERSION,
+    get_case_observer, get_case_record, get_dispute_expiration, get_resolution_record, has_admin,
+    has_attestation_record, has_case_record, has_resolution_record, is_observer_registered,
+    remove_dispute_expiration, remove_observer_registered, set_admin, set_attestation_record,
+    set_case_observer, set_case_record, set_contract_version, set_dispute_expiration,
+    set_observer_registered, set_resolution_record, DEFAULT_DISPUTE_TTL_LEDGERS, PROTOCOL_VERSION,
 };
 use types::{
     Attestation, AttestationRole, BreakCode, CaseStatus, Decision, Observation, ObservationRecord,
@@ -210,6 +211,7 @@ impl SettlementRegistry {
             created_at_ledger: current_ledger,
             finalized_at_ledger: None,
             observer_quorum: storage::DEFAULT_OBSERVER_QUORUM,
+            dispute_expires_at_ledger: None,
         };
 
         set_case_record(&env, &case_id, &case);
@@ -465,10 +467,65 @@ impl SettlementRegistry {
 
         validate_state_transition(case.status, CaseStatus::Disputed)?;
 
+        if case.counterparty.is_none() {
+            return Err(Error::CounterpartyRequired);
+        }
+
+        let current_ledger = env.ledger().sequence();
+        let expiration_ledger = current_ledger.saturating_add(DEFAULT_DISPUTE_TTL_LEDGERS);
+        set_dispute_expiration(&env, &case_id, expiration_ledger);
+        case.dispute_expires_at_ledger = Some(expiration_ledger);
+
         case.status = CaseStatus::Disputed;
         set_case_record(&env, &case_id, &case);
         emit_dispute_opened(&env, &case_id, &initiator, &dispute_commitment);
         Ok(())
+    }
+
+    /// Owner or Counterparty: opens a dispute against a broken settlement case with custom TTL ledgers.
+    pub fn open_dispute_with_ttl(
+        env: Env,
+        initiator: Address,
+        case_id: BytesN<32>,
+        dispute_commitment: BytesN<32>,
+        ttl_ledgers: u32,
+    ) -> Result<(), Error> {
+        initiator.require_auth();
+        validate_case_identity(&case_id)?;
+        require_non_zero_commitment(&dispute_commitment)?;
+        if ttl_ledgers == 0 {
+            return Err(Error::InvalidExpiration);
+        }
+
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+
+        let is_owner = initiator == case.owner;
+        let is_cp = case.counterparty.as_ref() == Some(&initiator);
+
+        if !is_owner && !is_cp {
+            return Err(Error::Unauthorized);
+        }
+
+        validate_state_transition(case.status, CaseStatus::Disputed)?;
+
+        if case.counterparty.is_none() {
+            return Err(Error::CounterpartyRequired);
+        }
+
+        let current_ledger = env.ledger().sequence();
+        let expiration_ledger = current_ledger.saturating_add(ttl_ledgers);
+        set_dispute_expiration(&env, &case_id, expiration_ledger);
+        case.dispute_expires_at_ledger = Some(expiration_ledger);
+
+        case.status = CaseStatus::Disputed;
+        set_case_record(&env, &case_id, &case);
+        emit_dispute_opened(&env, &case_id, &initiator, &dispute_commitment);
+        Ok(())
+    }
+
+    /// Reads the dispute expiration ledger sequence for an active dispute, if any.
+    pub fn get_dispute_expiration(env: Env, case_id: BytesN<32>) -> Option<u32> {
+        storage::get_dispute_expiration(&env, &case_id)
     }
 
     /// Owner or Counterparty: submits two-party resolution commitment.
@@ -485,6 +542,12 @@ impl SettlementRegistry {
         let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
         if case.status != CaseStatus::Disputed {
             return Err(Error::InvalidState);
+        }
+
+        if let Some(exp) = get_dispute_expiration(&env, &case_id) {
+            if env.ledger().sequence() >= exp {
+                return Err(Error::DisputeAlreadyExpired);
+            }
         }
 
         let is_owner = resolver == case.owner;
@@ -513,6 +576,8 @@ impl SettlementRegistry {
             if o_comm == c_comm {
                 validate_state_transition(case.status, CaseStatus::Resolved)?;
                 case.status = CaseStatus::Resolved;
+                remove_dispute_expiration(&env, &case_id);
+                case.dispute_expires_at_ledger = None;
                 set_case_record(&env, &case_id, &case);
                 emit_dispute_resolved(&env, &case_id, &o_comm);
             }
@@ -619,6 +684,7 @@ impl SettlementRegistry {
     pub fn get_case(env: Env, case_id: BytesN<32>) -> Result<SettlementCase, Error> {
         let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
         case.observer_quorum = storage::get_case_quorum(&env, &case_id);
+        case.dispute_expires_at_ledger = storage::get_dispute_expiration(&env, &case_id);
         Ok(case)
     }
 

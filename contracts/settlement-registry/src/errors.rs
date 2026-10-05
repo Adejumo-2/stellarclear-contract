@@ -43,4 +43,8 @@ pub enum Error {
     InvalidObserverQuorum = 18,
     /// Required observer quorum threshold was not met.
     ObserverQuorumNotMet = 19,
+    /// Dispute has not yet expired; current ledger sequence is before the expiration ledger.
+    DisputeNotExpired = 20,
+    /// Dispute has already expired; resolution submissions are no longer accepted.
+    DisputeAlreadyExpired = 21,
 }

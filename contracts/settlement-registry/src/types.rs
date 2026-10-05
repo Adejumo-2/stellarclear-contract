@@ -102,4 +102,6 @@ pub struct SettlementCase {
     pub finalized_at_ledger: Option<u32>,
     /// Minimum required distinct observer attestations for finalization.
     pub observer_quorum: u32,
+    /// Ledger sequence when an active dispute expires, if disputed.
+    pub dispute_expires_at_ledger: Option<u32>,
 }
