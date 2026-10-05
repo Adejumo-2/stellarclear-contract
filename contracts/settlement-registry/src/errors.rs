@@ -39,4 +39,6 @@ pub enum Error {
     InvalidDecision = 16,
     /// Observation ledger is zero or in the future relative to current ledger.
     InvalidLedger = 17,
+    /// Observer quorum threshold must be a positive integer.
+    InvalidObserverQuorum = 18,
 }

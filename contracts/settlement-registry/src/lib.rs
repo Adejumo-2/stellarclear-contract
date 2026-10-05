@@ -41,8 +41,9 @@ use auth::{
 use errors::Error;
 use events::{
     emit_attestation_submitted, emit_case_broken, emit_case_created, emit_case_finalized,
-    emit_case_matched, emit_dispute_opened, emit_dispute_resolved, emit_observation_recorded,
-    emit_observer_added, emit_observer_removed, emit_resolution_submitted,
+    emit_case_matched, emit_case_quorum_set, emit_dispute_opened, emit_dispute_resolved,
+    emit_observation_recorded, emit_observer_added, emit_observer_removed,
+    emit_resolution_submitted,
 };
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
 use storage::{
@@ -153,9 +154,11 @@ impl SettlementRegistry {
             decision: Decision::None,
             created_at_ledger: current_ledger,
             finalized_at_ledger: None,
+            observer_quorum: storage::DEFAULT_OBSERVER_QUORUM,
         };
 
         set_case_record(&env, &case_id, &case);
+        storage::set_case_quorum(&env, &case_id, storage::DEFAULT_OBSERVER_QUORUM);
         emit_case_created(
             &env,
             &case_id,
@@ -164,6 +167,30 @@ impl SettlementRegistry {
             case.expires_at_ledger,
         );
         Ok(())
+    }
+
+    /// Owner-authorized: configures the required observer quorum threshold for a case.
+    pub fn set_case_quorum(env: Env, case_id: BytesN<32>, quorum: u32) -> Result<(), Error> {
+        if quorum == 0 {
+            return Err(Error::InvalidObserverQuorum);
+        }
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+        case.owner.require_auth();
+
+        if case.status == CaseStatus::Finalized {
+            return Err(Error::InvalidState);
+        }
+
+        storage::set_case_quorum(&env, &case_id, quorum);
+        case.observer_quorum = quorum;
+        set_case_record(&env, &case_id, &case);
+        emit_case_quorum_set(&env, &case_id, quorum);
+        Ok(())
+    }
+
+    /// Reads the configured observer quorum threshold for a case.
+    pub fn get_case_quorum(env: Env, case_id: BytesN<32>) -> u32 {
+        storage::get_case_quorum(&env, &case_id)
     }
 
     /// Observer-authorized: records an observed settlement transaction for an open case.
@@ -457,7 +484,9 @@ impl SettlementRegistry {
 
     /// Reads a settlement case record by ID.
     pub fn get_case(env: Env, case_id: BytesN<32>) -> Result<SettlementCase, Error> {
-        get_case_record(&env, &case_id).ok_or(Error::NotFound)
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+        case.observer_quorum = storage::get_case_quorum(&env, &case_id);
+        Ok(case)
     }
 
     /// Reads an attestation record by case ID and attestor address.

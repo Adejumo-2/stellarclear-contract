@@ -100,4 +100,6 @@ pub struct SettlementCase {
     pub created_at_ledger: u32,
     /// Ledger sequence when the case reached finalization.
     pub finalized_at_ledger: Option<u32>,
+    /// Minimum required distinct observer attestations for finalization.
+    pub observer_quorum: u32,
 }

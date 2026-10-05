@@ -19,10 +19,15 @@ pub enum DataKey {
     Attestation(BytesN<32>, Address),
     /// Resolution commitment indexed by case ID and resolver address (persistent storage).
     Resolution(BytesN<32>, Address),
+    /// Configured observer quorum threshold for a case (persistent storage).
+    CaseQuorum(BytesN<32>),
 }
 
 // Protocol version constant
 pub const PROTOCOL_VERSION: u32 = 1;
+
+/// Default observer quorum threshold for newly created settlement cases.
+pub const DEFAULT_OBSERVER_QUORUM: u32 = 1;
 
 // Storage helpers for Admin
 pub fn get_admin(env: &Env) -> Option<Address> {
@@ -139,4 +144,18 @@ pub fn set_resolution_record(
 pub fn has_resolution_record(env: &Env, case_id: &BytesN<32>, resolver: &Address) -> bool {
     let key = DataKey::Resolution(case_id.clone(), resolver.clone());
     env.storage().persistent().has(&key)
+}
+
+// Storage helpers for Case Quorum (persistent)
+pub fn get_case_quorum(env: &Env, case_id: &BytesN<32>) -> u32 {
+    let key = DataKey::CaseQuorum(case_id.clone());
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(DEFAULT_OBSERVER_QUORUM)
+}
+
+pub fn set_case_quorum(env: &Env, case_id: &BytesN<32>, quorum: u32) {
+    let key = DataKey::CaseQuorum(case_id.clone());
+    env.storage().persistent().set(&key, &quorum);
 }

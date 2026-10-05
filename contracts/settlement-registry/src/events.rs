@@ -27,6 +27,14 @@ pub struct CaseCreated {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CaseQuorumSet {
+    #[topic]
+    pub case_id: BytesN<32>,
+    pub quorum: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ObservationRecorded {
     #[topic]
     pub case_id: BytesN<32>,
@@ -121,6 +129,14 @@ pub fn emit_case_created(
         owner: owner.clone(),
         counterparty: counterparty.clone(),
         expires_at_ledger,
+    }
+    .publish(env);
+}
+
+pub fn emit_case_quorum_set(env: &Env, case_id: &BytesN<32>, quorum: u32) {
+    CaseQuorumSet {
+        case_id: case_id.clone(),
+        quorum,
     }
     .publish(env);
 }
