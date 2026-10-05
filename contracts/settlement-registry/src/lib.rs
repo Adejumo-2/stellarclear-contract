@@ -41,8 +41,8 @@ use auth::{
 use errors::Error;
 use events::{
     emit_attestation_submitted, emit_case_broken, emit_case_created, emit_case_finalized,
-    emit_case_matched, emit_case_quorum_set, emit_dispute_opened, emit_dispute_resolved,
-    emit_observation_recorded, emit_observer_added, emit_observer_removed,
+    emit_case_matched, emit_case_quorum_set, emit_dispute_expired, emit_dispute_opened,
+    emit_dispute_resolved, emit_observation_recorded, emit_observer_added, emit_observer_removed,
     emit_resolution_submitted,
 };
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
@@ -550,6 +550,7 @@ impl SettlementRegistry {
         case.dispute_expires_at_ledger = None;
         case.status = CaseStatus::Break;
         set_case_record(&env, &case_id, &case);
+        emit_dispute_expired(&env, &case_id, exp, current_ledger);
         Ok(())
     }
 

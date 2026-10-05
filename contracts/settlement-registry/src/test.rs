@@ -3859,3 +3859,41 @@ fn test_finalized_case_rejects_attestations_and_quorum_mutation() {
         Err(Ok(Error::InvalidState))
     );
 }
+
+#[test]
+fn test_event_completeness_quorum_and_dispute_expired() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let counterparty = Address::generate(&env);
+    let observer = Address::generate(&env);
+    client.add_observer(&observer);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(
+        &case_id,
+        &owner,
+        &Some(counterparty),
+        &sample_bytes(&env, 2),
+        &50_000,
+    );
+
+    // Event on set_case_quorum (CaseQuorumSet emitted)
+    client.set_case_quorum(&case_id, &3);
+    assert_eq!(env.events().all().events().len(), 1);
+
+    client.record_observation(
+        &observer,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
+
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &10);
+    env.ledger().set_sequence_number(111);
+
+    // Event on expire_dispute (DisputeExpired emitted)
+    client.expire_dispute(&case_id);
+    assert_eq!(env.events().all().events().len(), 1);
+}
