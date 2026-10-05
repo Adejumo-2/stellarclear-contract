@@ -60,7 +60,8 @@ use types::{
     SettlementCase,
 };
 
-/// Pure helper: counts valid distinct active registered observer attestations for a case.
+/// Pure helper: counts valid distinct observer attestations for a case.
+/// Authorization is verified at submission time; recorded observer attestations remain valid historically.
 fn get_observer_attestation_count(
     env: &Env,
     case_id: &BytesN<32>,
@@ -77,9 +78,6 @@ fn get_observer_attestation_count(
             if &obs == cp {
                 continue;
             }
-        }
-        if !is_observer_registered(env, &obs) {
-            continue;
         }
         if let Some(att) = get_attestation_record(env, case_id, &obs) {
             if att.role == AttestationRole::Observer {

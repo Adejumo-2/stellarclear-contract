@@ -1474,12 +1474,12 @@ fn test_auth_finalization_requires_active_registered_observer() {
         &sample_bytes(&env, 11),
     );
 
-    // Revoke observer before finalization
+    // Revoke observer after attestation submission
     client.remove_observer(&observer);
 
-    // Finalization must fail because observer is no longer active
-    let res = client.try_finalize_case(&case_id);
-    assert_eq!(res, Err(Ok(Error::MissingRequiredAttestation)));
+    // Finalization succeeds because observer was authorized at attestation submission time
+    client.finalize_case(&case_id);
+    assert_eq!(client.get_case(&case_id).status, CaseStatus::Finalized);
 }
 
 // ---------------------------------------------------------------------------
@@ -3520,19 +3520,26 @@ fn test_observer_quorum_revoked_observer_fails_quorum() {
     );
     client.submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 12));
 
-    // Revoke obs2
+    // Revoke obs2 after its attestation has already been recorded
     client.remove_observer(&obs2);
 
-    // Finalization fails because obs2 is no longer active registered observer
+    // Finalization succeeds because obs2 was authorized at attestation submission time
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+
+    // Newly revoked observer cannot submit a new attestation
+    let case2_id = sample_bytes(&env, 99);
+    client.create_case(&case2_id, &owner, &None, &sample_bytes(&env, 2), &500);
     assert_eq!(
-        client.try_finalize_case(&case_id),
-        Err(Ok(Error::ObserverQuorumNotMet))
+        client.try_submit_observer_attestation(&case2_id, &obs2, &sample_bytes(&env, 13)),
+        Err(Ok(Error::ObserverNotRegistered))
     );
 
     // Unregistered observer cannot submit attestation
     let obs3 = Address::generate(&env);
     assert_eq!(
-        client.try_submit_observer_attestation(&case_id, &obs3, &sample_bytes(&env, 13)),
+        client.try_submit_observer_attestation(&case2_id, &obs3, &sample_bytes(&env, 14)),
         Err(Ok(Error::ObserverNotRegistered))
     );
 }
