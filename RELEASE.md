@@ -33,8 +33,8 @@ The StellarClear protocol maintains an immutable record of historical deployment
 #### 2. Main-Branch Reproducible Build
 - **Source Revision**: `17ee9d72ab488530b80d87481c9c7e21d948a310` (and subsequent `main` commits)
 - **Toolchain**: Rust Stable (`wasm32v1-none`), Soroban SDK `27.0.4`, Stellar CLI `28.1.0`
-- **WASM SHA-256 Checksum**: `6c8e08aaf00e140c52552958fa4c97edc1960d8acf39183eeab8b5f4cded569e`
-- **WASM Size**: `32,722 bytes` (optimized with deterministic flags)
+- **WASM SHA-256 Checksum**: `0073a4cb2027140ac34e4db6c64c2d4104590ec60cf0ef2e424909eba9ae36ac`
+- **WASM Size**: `32,773 bytes` (optimized with deterministic flags)
 - **Artifact File**: [`artifacts/settlement_registry.wasm`](./artifacts/settlement_registry.wasm)
 - **Checksum File**: [`artifacts/settlement_registry.wasm.sha256`](./artifacts/settlement_registry.wasm.sha256)
 - **Release Manifest**: [`artifacts/release-manifest.json`](./artifacts/release-manifest.json)

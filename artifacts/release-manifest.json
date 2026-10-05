@@ -1,12 +1,12 @@
 {
   "contract_name": "settlement_registry",
   "version": "0.1.0",
-  "git_commit": "17ee9d72ab488530b80d87481c9c7e21d948a310",
-  "git_branch": "cleanup/repo-hygiene-and-docs",
-  "timestamp": "2026-10-01T22:37:09Z",
+  "git_commit": "e93191b5b34ccf265f4aba151116ee54e9cd54bb",
+  "git_branch": "feat/observer-quorum-and-dispute-ttl",
+  "timestamp": "2026-10-05T23:20:26Z",
   "wasm_file": "settlement_registry.wasm",
-  "wasm_sha256": "6c8e08aaf00e140c52552958fa4c97edc1960d8acf39183eeab8b5f4cded569e",
-  "wasm_size_bytes": 32722,
+  "wasm_sha256": "0073a4cb2027140ac34e4db6c64c2d4104590ec60cf0ef2e424909eba9ae36ac",
+  "wasm_size_bytes": 32773,
   "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)",
   "stellar_cli_version": "stellar 28.1.0 (c0f4d0da891bbf214c08b8c5035ae6db80e9a3bd)",
   "soroban_sdk_version": "27.0.4",
@@ -15,7 +15,7 @@
     "testnet": {
       "rpc_url": "https://soroban-testnet.stellar.org",
       "network_passphrase": "Test SDF Network ; September 2015",
-      "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+      "contract_id": ""
     },
     "mainnet": {
       "rpc_url": "https://mainnet.sorobanrpc.com",
