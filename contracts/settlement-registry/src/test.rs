@@ -769,7 +769,7 @@ fn test_finalize_matched_case_missing_attestation_fails() {
     client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
 
     let res = client.try_finalize_case(&case_id);
-    assert_eq!(res, Err(Ok(Error::MissingRequiredAttestation)));
+    assert_eq!(res, Err(Ok(Error::ObserverQuorumNotMet)));
 }
 
 #[test]
@@ -3011,7 +3011,7 @@ fn test_rc_security_attestation_and_finalization_rules() {
     client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
     assert_eq!(
         client.try_finalize_case(&case_id),
-        Err(Ok(Error::MissingRequiredAttestation))
+        Err(Ok(Error::ObserverQuorumNotMet))
     );
 
     // Finalization succeeds once observer attests
@@ -3405,6 +3405,45 @@ fn test_observer_quorum_2_success_and_failure() {
     client.submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 12));
 
     // Quorum 2 is now met, finalization succeeds
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+}
+
+#[test]
+fn test_observer_quorum_original_observer_not_mandatory_for_finalization() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let original_obs = Address::generate(&env);
+    let obs_a = Address::generate(&env);
+    let obs_b = Address::generate(&env);
+
+    client.add_observer(&original_obs);
+    client.add_observer(&obs_a);
+    client.add_observer(&obs_b);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+    client.set_case_quorum(&case_id, &2);
+
+    // original_obs records observation and match, but NEVER attests
+    client.record_observation(
+        &original_obs,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&original_obs, &case_id);
+
+    // Owner attests
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+
+    // Two distinct observers (obs_a, obs_b) attest; original_obs does NOT attest
+    client.submit_observer_attestation(&case_id, &obs_a, &sample_bytes(&env, 20));
+    client.submit_observer_attestation(&case_id, &obs_b, &sample_bytes(&env, 21));
+
+    // Pure M-of-N finalization succeeds!
     client.finalize_case(&case_id);
     let final_case = client.get_case(&case_id);
     assert_eq!(final_case.status, CaseStatus::Finalized);
