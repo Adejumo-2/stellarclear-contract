@@ -33,14 +33,14 @@ The StellarClear protocol maintains an immutable record of historical deployment
 #### 2. Main-Branch Reproducible Build
 - **Source Revision**: `17ee9d72ab488530b80d87481c9c7e21d948a310` (and subsequent `main` commits)
 - **Toolchain**: Rust Stable (`wasm32v1-none`), Soroban SDK `27.0.4`, Stellar CLI `28.1.0`
-- **WASM SHA-256 Checksum**: `625f32b9a6d54deed5372bce9dbea2124b120c58dc6772d2b53ee73000d13ef2`
-- **WASM Size**: `25,615 bytes` (optimized with deterministic flags)
+- **WASM SHA-256 Checksum**: `6c8e08aaf00e140c52552958fa4c97edc1960d8acf39183eeab8b5f4cded569e`
+- **WASM Size**: `32,722 bytes` (optimized with deterministic flags)
 - **Artifact File**: [`artifacts/settlement_registry.wasm`](./artifacts/settlement_registry.wasm)
 - **Checksum File**: [`artifacts/settlement_registry.wasm.sha256`](./artifacts/settlement_registry.wasm.sha256)
 - **Release Manifest**: [`artifacts/release-manifest.json`](./artifacts/release-manifest.json)
 
 > [!IMPORTANT]
-> The bytecode hash `625f32b9...` represents a later reproducible rebuild on the stable toolchain and must NOT be mistaken for the deployed v0.1.0 bytecode (`1018a81b...`).
+> The bytecode hash `6c8e08aa...` represents the reproducible build on the stable toolchain and must NOT be mistaken for the deployed initial prototype bytecode (`1018a81b...`).
 
 ### Exported Smart Contract Functions (22)
 
@@ -160,8 +160,8 @@ The `release-manifest.json` provides comprehensive machine-readable provenance:
   "git_branch": "cleanup/repo-hygiene-and-docs",
   "timestamp": "2026-10-01T22:37:09Z",
   "wasm_file": "settlement_registry.wasm",
-  "wasm_sha256": "625f32b9a6d54deed5372bce9dbea2124b120c58dc6772d2b53ee73000d13ef2",
-  "wasm_size_bytes": 25615,
+  "wasm_sha256": "6c8e08aaf00e140c52552958fa4c97edc1960d8acf39183eeab8b5f4cded569e",
+  "wasm_size_bytes": 32722,
   "rustc_version": "rustc 1.99.0 (b940084d7 2026-09-28)",
   "stellar_cli_version": "stellar 28.1.0 (c0f4d0da891bbf214c08b8c5035ae6db80e9a3bd)",
   "soroban_sdk_version": "27.0.4",
