@@ -127,39 +127,49 @@ Settlement cases follow an explicit, deterministic state progression:
 Open ──► Observed ──┬──► Matched ─────────────────────────────────► Finalized
                     │
                     └──► Break ──► Disputed ──► Resolved ─────────► Finalized
+                           ▲          │
+                           └──(TTL)───┘ (expire_dispute)
 ```
 
 ### Supported Transitions:
 - `Open -> Observed`: Triggered by `record_observation` from a registered observer.
 - `Observed -> Matched`: Triggered by `record_match` from the assigned observer.
 - `Observed -> Break`: Triggered by `record_break` with a `BreakCode` from the assigned observer.
-- `Break -> Disputed`: Triggered by `open_dispute` from the case owner or counterparty.
+- `Break -> Disputed`: Triggered by `open_dispute` or `open_dispute_with_ttl` from the case owner or counterparty (requires a counterparty).
 - `Disputed -> Resolved`: Triggered by `submit_resolution` when both owner and counterparty independently submit matching 32-byte resolution commitments.
-- `Matched -> Finalized`: Triggered by `finalize_case` from the owner when Owner and Observer attestations are present.
-- `Resolved -> Finalized`: Triggered by `finalize_case` from the owner when Owner, Counterparty, and Observer attestations are present.
+- `Disputed -> Break`: Triggered by permissionless `expire_dispute` once the dispute TTL ledger sequence is reached without resolution, resetting the dispute state deterministically without forging mutual agreement.
+- `Matched -> Finalized`: Triggered by `finalize_case` from the owner when Owner attestation and the required M-of-N distinct registered observer quorum attestations are present.
+- `Resolved -> Finalized`: Triggered by `finalize_case` from the owner when Owner, Counterparty, and the required M-of-N distinct registered observer quorum attestations are present.
 
 ---
 
 ## Public Interface
 
-The `SettlementRegistry` contract exposes 15 public functions:
+The `SettlementRegistry` contract exposes 22 public functions:
 
 | Function | Description | Callable By | Required State | Resulting State |
 | :--- | :--- | :--- | :--- | :--- |
 | `__constructor(admin: Address)` | One-time initialization setting the protocol admin and version `1`. | Deployer | Uninitialized | Initialized |
 | `add_observer(observer: Address)` | Registers an authorized settlement observer address. | Contract Admin | Any (unregistered observer) | Observer Whitelisted |
 | `remove_observer(observer: Address)` | Revokes authorization for an existing settlement observer. | Contract Admin | Any (registered observer) | Observer Revoked |
-| `create_case(case_id, owner, counterparty, terms_commitment, expires_at_ledger)` | Opens a new settlement case with terms hash and expiration ledger. | Case Owner (`owner.require_auth()`) | Non-existent `case_id` | `Open` |
+| `is_observer(observer: Address) -> bool` | Checks whether an address is currently a registered authorized observer. | Anyone (Public query) | Any | N/A (Read-only) |
+| `create_case(case_id, owner, counterparty, terms_commitment, expires_at_ledger)` | Opens a new settlement case with terms hash and expiration ledger (defaults quorum to 1). | Case Owner (`owner.require_auth()`) | Non-existent `case_id` | `Open` |
+| `set_case_quorum(case_id, quorum)` | Configures the required distinct observer quorum threshold for a case. | Case Owner (`owner.require_auth()`) | Any non-finalized case | Quorum Configured |
+| `get_case_quorum(case_id) -> u32` | Reads the configured observer quorum threshold for a case (defaults to 1). | Anyone (Public query) | Any | N/A (Read-only) |
+| `get_attested_observers(case_id) -> Vec<Address>` | Reads distinct observer addresses that submitted attestations for a case. | Anyone (Public query) | Any | N/A (Read-only) |
 | `record_observation(observer, case_id, tx_hash, observed_ledger, observation_commitment)` | Records Stellar transaction hash and observation evidence for an open case. | Registered Observer (`require_observer_auth()`) | `Open` | `Observed` |
 | `record_match(observer, case_id)` | Records a positive reconciliation decision for an observed case. | Registered Observer (`require_observer_auth()`) | `Observed` | `Matched` |
 | `record_break(observer, case_id, break_code)` | Records a reconciliation break decision with standardized `BreakCode`. | Registered Observer (`require_observer_auth()`) | `Observed` | `Break` |
-| `submit_attestation(case_id, role, commitment)` | Submits a 32-byte cryptographic attestation for `Owner`, `Counterparty`, or `Observer`. | Authorized Principal for Role | Any active case prior to `Finalized` | Attestation Recorded |
-| `open_dispute(initiator, case_id, dispute_commitment)` | Opens a dispute against a case in `Break` state. | Case Owner or Counterparty | `Break` | `Disputed` |
-| `submit_resolution(resolver, case_id, resolution_commitment)` | Submits resolution terms; transitions to `Resolved` once both parties agree. | Case Owner or Counterparty | `Disputed` | `Disputed` (1st party) / `Resolved` (matching 2nd party) |
-| `finalize_case(case_id)` | Irreversibly locks settlement outcome after verifying required role attestations. | Case Owner (`owner.require_auth()`) | `Matched` (Owner+Observer) or `Resolved` (Owner+CP+Observer) | `Finalized` (Terminal) |
-| `get_case(case_id) -> SettlementCase` | Queries complete on-chain case record (terms, status, observation, decision). | Anyone (Public query) | Any | N/A (Read-only) |
+| `submit_attestation(case_id, role, commitment)` | Submits a 32-byte cryptographic attestation for `Owner`, `Counterparty`, or primary `Observer`. | Authorized Principal for Role | Any active case prior to `Finalized` | Attestation Recorded |
+| `submit_observer_attestation(case_id, observer, commitment)` | Submits an observer attestation from an authorized observer towards the M-of-N quorum. | Registered Observer (`require_observer_auth()`) | Any active case prior to `Finalized` | Attestation Recorded |
+| `open_dispute(initiator, case_id, dispute_commitment)` | Opens a dispute with default TTL (~24h / 17,280 ledgers) against a case in `Break` state. | Case Owner or Counterparty | `Break` (requires counterparty) | `Disputed` |
+| `open_dispute_with_ttl(initiator, case_id, dispute_commitment, ttl_ledgers)` | Opens a dispute with custom TTL ledgers against a case in `Break` state. | Case Owner or Counterparty | `Break` (requires counterparty) | `Disputed` |
+| `expire_dispute(case_id)` | Permissionless timeout: transitions unaddressed dispute back to `Break` after TTL expires. | Anyone (Permissionless) | `Disputed` (current ledger >= expiry) | `Break` |
+| `get_dispute_expiration(case_id) -> Option<u32>` | Reads the dispute expiration ledger sequence for an active dispute, if any. | Anyone (Public query) | Any | N/A (Read-only) |
+| `submit_resolution(resolver, case_id, resolution_commitment)` | Submits resolution terms; transitions to `Resolved` once both parties agree. | Case Owner or Counterparty | `Disputed` (prior to TTL expiry) | `Disputed` (1st party) / `Resolved` (matching 2nd party) |
+| `finalize_case(case_id)` | Irreversibly locks settlement outcome after verifying required role and observer quorum attestations. | Case Owner (`owner.require_auth()`) | `Matched` (Owner+Quorum) or `Resolved` (Owner+CP+Quorum) | `Finalized` (Terminal) |
+| `get_case(case_id) -> SettlementCase` | Queries complete on-chain case record (terms, status, observation, decision, quorum, expiry). | Anyone (Public query) | Any | N/A (Read-only) |
 | `get_attestation(case_id, attestor) -> Option<Attestation>` | Queries registered attestation for a specific address on a case. | Anyone (Public query) | Any | N/A (Read-only) |
-| `is_observer(observer: Address) -> bool` | Checks whether an address is currently a registered authorized observer. | Anyone (Public query) | Any | N/A (Read-only) |
 | `get_resolution(case_id, resolver) -> Option<BytesN<32>>` | Queries submitted dispute resolution commitment for a specific address. | Anyone (Public query) | Any | N/A (Read-only) |
 
 ---
@@ -173,14 +183,16 @@ The contract emits typed Soroban events for all state-mutating transitions, allo
 | `ObserverAdded` | Admin registers a new observer (`add_observer`). | `observer: Address` | `()` |
 | `ObserverRemoved` | Admin revokes an observer (`remove_observer`). | `observer: Address` | `()` |
 | `CaseCreated` | Case owner opens a new settlement case (`create_case`). | `case_id: BytesN<32>` | `owner`, `counterparty`, `expires_at_ledger` |
+| `CaseQuorumSet` | Case owner configures observer quorum threshold (`set_case_quorum`). | `case_id: BytesN<32>` | `quorum: u32` |
 | `ObservationRecorded` | Observer anchors payment evidence on open case (`record_observation`). | `case_id: BytesN<32>` | `observer`, `tx_hash`, `observed_ledger` |
 | `CaseMatched` | Observer records reconciliation match (`record_match`). | `case_id: BytesN<32>` | `observer` |
 | `CaseBroken` | Observer records reconciliation break (`record_break`). | `case_id: BytesN<32>` | `observer`, `break_code` |
-| `AttestationSubmitted` | Participant submits cryptographic attestation (`submit_attestation`). | `case_id: BytesN<32>` | `attestor`, `role` |
-| `DisputeOpened` | Owner or Counterparty opens dispute on broken case (`open_dispute`). | `case_id: BytesN<32>` | `initiator`, `dispute_commitment` |
+| `AttestationSubmitted` | Participant submits cryptographic attestation (`submit_attestation` / `submit_observer_attestation`). | `case_id: BytesN<32>` | `attestor`, `role` |
+| `DisputeOpened` | Owner or Counterparty opens dispute on broken case (`open_dispute` / `open_dispute_with_ttl`). | `case_id: BytesN<32>` | `initiator`, `dispute_commitment` |
 | `ResolutionSubmitted` | Disputant submits proposed resolution terms (`submit_resolution`). | `case_id: BytesN<32>` | `resolver`, `resolution_commitment` |
 | `DisputeResolved` | Both disputants independently submit matching terms (`submit_resolution`). | `case_id: BytesN<32>` | `resolution_commitment` |
-| `CaseFinalized` | Owner finalizes case with required attestations (`finalize_case`). | `case_id: BytesN<32>` | `finalized_at_ledger` |
+| `DisputeExpired` | Permissionless caller triggers dispute timeout after TTL (`expire_dispute`). | `case_id: BytesN<32>` | `expiration_ledger`, `closed_at_ledger` |
+| `CaseFinalized` | Owner finalizes case with required attestations and quorum (`finalize_case`). | `case_id: BytesN<32>` | `finalized_at_ledger` |
 
 ---
 

@@ -19,10 +19,22 @@ pub enum DataKey {
     Attestation(BytesN<32>, Address),
     /// Resolution commitment indexed by case ID and resolver address (persistent storage).
     Resolution(BytesN<32>, Address),
+    /// Configured observer quorum threshold for a case (persistent storage).
+    CaseQuorum(BytesN<32>),
+    /// List of distinct observer addresses that submitted attestations for a case (persistent storage).
+    CaseAttestedObservers(BytesN<32>),
+    /// Dispute expiration ledger sequence indexed by case ID (persistent storage).
+    DisputeExpiration(BytesN<32>),
 }
 
 // Protocol version constant
 pub const PROTOCOL_VERSION: u32 = 1;
+
+/// Default observer quorum threshold for newly created settlement cases.
+pub const DEFAULT_OBSERVER_QUORUM: u32 = 1;
+
+/// Default dispute expiration TTL in ledgers (~24 hours at 5s/ledger).
+pub const DEFAULT_DISPUTE_TTL_LEDGERS: u32 = 17_280;
 
 // Storage helpers for Admin
 pub fn get_admin(env: &Env) -> Option<Address> {
@@ -139,4 +151,72 @@ pub fn set_resolution_record(
 pub fn has_resolution_record(env: &Env, case_id: &BytesN<32>, resolver: &Address) -> bool {
     let key = DataKey::Resolution(case_id.clone(), resolver.clone());
     env.storage().persistent().has(&key)
+}
+
+pub fn remove_resolution_record(env: &Env, case_id: &BytesN<32>, resolver: &Address) {
+    let key = DataKey::Resolution(case_id.clone(), resolver.clone());
+    env.storage().persistent().remove(&key);
+}
+
+// Storage helpers for Case Quorum (persistent)
+pub fn get_case_quorum(env: &Env, case_id: &BytesN<32>) -> u32 {
+    let key = DataKey::CaseQuorum(case_id.clone());
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or(DEFAULT_OBSERVER_QUORUM)
+}
+
+pub fn set_case_quorum(env: &Env, case_id: &BytesN<32>, quorum: u32) {
+    let key = DataKey::CaseQuorum(case_id.clone());
+    env.storage().persistent().set(&key, &quorum);
+}
+
+// Storage helpers for Case Attested Observers (persistent)
+pub fn get_case_attested_observers(env: &Env, case_id: &BytesN<32>) -> soroban_sdk::Vec<Address> {
+    let key = DataKey::CaseAttestedObservers(case_id.clone());
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| soroban_sdk::Vec::new(env))
+}
+
+pub fn set_case_attested_observers(
+    env: &Env,
+    case_id: &BytesN<32>,
+    observers: &soroban_sdk::Vec<Address>,
+) {
+    let key = DataKey::CaseAttestedObservers(case_id.clone());
+    env.storage().persistent().set(&key, observers);
+}
+
+pub fn add_case_attested_observer(env: &Env, case_id: &BytesN<32>, observer: &Address) {
+    let mut observers = get_case_attested_observers(env, case_id);
+    let mut already_present = false;
+    for existing in observers.iter() {
+        if &existing == observer {
+            already_present = true;
+            break;
+        }
+    }
+    if !already_present {
+        observers.push_back(observer.clone());
+        set_case_attested_observers(env, case_id, &observers);
+    }
+}
+
+// Storage helpers for Dispute Expiration (persistent)
+pub fn get_dispute_expiration(env: &Env, case_id: &BytesN<32>) -> Option<u32> {
+    let key = DataKey::DisputeExpiration(case_id.clone());
+    env.storage().persistent().get(&key)
+}
+
+pub fn set_dispute_expiration(env: &Env, case_id: &BytesN<32>, expiration_ledger: u32) {
+    let key = DataKey::DisputeExpiration(case_id.clone());
+    env.storage().persistent().set(&key, &expiration_ledger);
+}
+
+pub fn remove_dispute_expiration(env: &Env, case_id: &BytesN<32>) {
+    let key = DataKey::DisputeExpiration(case_id.clone());
+    env.storage().persistent().remove(&key);
 }

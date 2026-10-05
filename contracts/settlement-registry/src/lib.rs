@@ -41,21 +41,79 @@ use auth::{
 use errors::Error;
 use events::{
     emit_attestation_submitted, emit_case_broken, emit_case_created, emit_case_finalized,
-    emit_case_matched, emit_dispute_opened, emit_dispute_resolved, emit_observation_recorded,
-    emit_observer_added, emit_observer_removed, emit_resolution_submitted,
+    emit_case_matched, emit_case_quorum_set, emit_dispute_expired, emit_dispute_opened,
+    emit_dispute_resolved, emit_observation_recorded, emit_observer_added, emit_observer_removed,
+    emit_resolution_submitted,
 };
 use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
 use storage::{
-    get_attestation_record, get_case_observer, get_case_record, get_resolution_record, has_admin,
+    add_case_attested_observer, get_attestation_record, get_case_attested_observers,
+    get_case_observer, get_case_record, get_dispute_expiration, get_resolution_record, has_admin,
     has_attestation_record, has_case_record, has_resolution_record, is_observer_registered,
-    remove_observer_registered, set_admin, set_attestation_record, set_case_observer,
-    set_case_record, set_contract_version, set_observer_registered, set_resolution_record,
-    PROTOCOL_VERSION,
+    remove_dispute_expiration, remove_observer_registered, remove_resolution_record, set_admin,
+    set_attestation_record, set_case_observer, set_case_record, set_contract_version,
+    set_dispute_expiration, set_observer_registered, set_resolution_record,
+    DEFAULT_DISPUTE_TTL_LEDGERS, PROTOCOL_VERSION,
 };
 use types::{
     Attestation, AttestationRole, BreakCode, CaseStatus, Decision, Observation, ObservationRecord,
     SettlementCase,
 };
+
+/// Pure helper: counts valid distinct active registered observer attestations for a case.
+fn get_observer_attestation_count(
+    env: &Env,
+    case_id: &BytesN<32>,
+    owner: &Address,
+    counterparty: &Option<Address>,
+) -> u32 {
+    let observers = get_case_attested_observers(env, case_id);
+    let mut count: u32 = 0;
+    for obs in observers.iter() {
+        if &obs == owner {
+            continue;
+        }
+        if let Some(ref cp) = counterparty {
+            if &obs == cp {
+                continue;
+            }
+        }
+        if !is_observer_registered(env, &obs) {
+            continue;
+        }
+        if let Some(att) = get_attestation_record(env, case_id, &obs) {
+            if att.role == AttestationRole::Observer {
+                count = count.saturating_add(1);
+            }
+        }
+    }
+    count
+}
+
+/// Pure helper: checks if observer quorum threshold is satisfied for a case.
+fn has_required_observer_quorum(
+    env: &Env,
+    case_id: &BytesN<32>,
+    quorum: u32,
+    owner: &Address,
+    counterparty: &Option<Address>,
+) -> bool {
+    get_observer_attestation_count(env, case_id, owner, counterparty) >= quorum
+}
+
+/// Pure helper: verifies that distinct observer attestation count meets the required quorum.
+fn verify_observer_quorum(
+    env: &Env,
+    case_id: &BytesN<32>,
+    quorum: u32,
+    owner: &Address,
+    counterparty: &Option<Address>,
+) -> Result<(), Error> {
+    if !has_required_observer_quorum(env, case_id, quorum, owner, counterparty) {
+        return Err(Error::ObserverQuorumNotMet);
+    }
+    Ok(())
+}
 
 #[contract]
 pub struct SettlementRegistry;
@@ -153,9 +211,12 @@ impl SettlementRegistry {
             decision: Decision::None,
             created_at_ledger: current_ledger,
             finalized_at_ledger: None,
+            observer_quorum: storage::DEFAULT_OBSERVER_QUORUM,
+            dispute_expires_at_ledger: None,
         };
 
         set_case_record(&env, &case_id, &case);
+        storage::set_case_quorum(&env, &case_id, storage::DEFAULT_OBSERVER_QUORUM);
         emit_case_created(
             &env,
             &case_id,
@@ -164,6 +225,30 @@ impl SettlementRegistry {
             case.expires_at_ledger,
         );
         Ok(())
+    }
+
+    /// Owner-authorized: configures the required observer quorum threshold for a case.
+    pub fn set_case_quorum(env: Env, case_id: BytesN<32>, quorum: u32) -> Result<(), Error> {
+        if quorum == 0 {
+            return Err(Error::InvalidObserverQuorum);
+        }
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+        case.owner.require_auth();
+
+        if case.status == CaseStatus::Finalized {
+            return Err(Error::InvalidState);
+        }
+
+        storage::set_case_quorum(&env, &case_id, quorum);
+        case.observer_quorum = quorum;
+        set_case_record(&env, &case_id, &case);
+        emit_case_quorum_set(&env, &case_id, quorum);
+        Ok(())
+    }
+
+    /// Reads the configured observer quorum threshold for a case.
+    pub fn get_case_quorum(env: Env, case_id: BytesN<32>) -> u32 {
+        storage::get_case_quorum(&env, &case_id)
     }
 
     /// Observer-authorized: records an observed settlement transaction for an open case.
@@ -264,6 +349,9 @@ impl SettlementRegistry {
         validate_attestation_commitment(&commitment)?;
 
         let case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+        if case.status == CaseStatus::Finalized {
+            return Err(Error::InvalidState);
+        }
 
         let attestor: Address = match role {
             AttestationRole::Owner => {
@@ -280,6 +368,14 @@ impl SettlementRegistry {
             }
             AttestationRole::Observer => {
                 let obs = get_case_observer(&env, &case_id).ok_or(Error::ObserverNotRegistered)?;
+                if obs == case.owner {
+                    return Err(Error::Unauthorized);
+                }
+                if let Some(ref cp) = case.counterparty {
+                    if &obs == cp {
+                        return Err(Error::Unauthorized);
+                    }
+                }
                 require_observer_auth(&env, &obs)?;
                 obs
             }
@@ -297,8 +393,57 @@ impl SettlementRegistry {
         };
 
         set_attestation_record(&env, &case_id, &attestor, &attestation);
+        if role == AttestationRole::Observer {
+            add_case_attested_observer(&env, &case_id, &attestor);
+        }
         emit_attestation_submitted(&env, &case_id, &attestor, role);
         Ok(())
+    }
+
+    /// Observer-authorized: submits an attestation as a registered observer.
+    /// Used for multi-observer quorum where multiple distinct observers submit attestations.
+    pub fn submit_observer_attestation(
+        env: Env,
+        case_id: BytesN<32>,
+        observer: Address,
+        commitment: BytesN<32>,
+    ) -> Result<(), Error> {
+        validate_case_identity(&case_id)?;
+        validate_attestation_commitment(&commitment)?;
+        require_observer_auth(&env, &observer)?;
+        if !is_observer_registered(&env, &observer) {
+            return Err(Error::ObserverNotRegistered);
+        }
+        let case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+        if case.status == CaseStatus::Finalized {
+            return Err(Error::InvalidState);
+        }
+        if observer == case.owner {
+            return Err(Error::Unauthorized);
+        }
+        if let Some(ref cp) = case.counterparty {
+            if &observer == cp {
+                return Err(Error::Unauthorized);
+            }
+        }
+        if has_attestation_record(&env, &case_id, &observer) {
+            return Err(Error::AttestationAlreadyExists);
+        }
+        let current_ledger = env.ledger().sequence();
+        let attestation = Attestation {
+            role: AttestationRole::Observer,
+            commitment,
+            attested_at_ledger: current_ledger,
+        };
+        set_attestation_record(&env, &case_id, &observer, &attestation);
+        add_case_attested_observer(&env, &case_id, &observer);
+        emit_attestation_submitted(&env, &case_id, &observer, AttestationRole::Observer);
+        Ok(())
+    }
+
+    /// Reads the list of distinct observer addresses that submitted attestations for a case.
+    pub fn get_attested_observers(env: Env, case_id: BytesN<32>) -> soroban_sdk::Vec<Address> {
+        storage::get_case_attested_observers(&env, &case_id)
     }
 
     /// Owner or Counterparty: opens a dispute against a broken settlement case.
@@ -323,10 +468,95 @@ impl SettlementRegistry {
 
         validate_state_transition(case.status, CaseStatus::Disputed)?;
 
+        if case.counterparty.is_none() {
+            return Err(Error::CounterpartyRequired);
+        }
+
+        let current_ledger = env.ledger().sequence();
+        let expiration_ledger = current_ledger.saturating_add(DEFAULT_DISPUTE_TTL_LEDGERS);
+        set_dispute_expiration(&env, &case_id, expiration_ledger);
+        case.dispute_expires_at_ledger = Some(expiration_ledger);
+
         case.status = CaseStatus::Disputed;
         set_case_record(&env, &case_id, &case);
         emit_dispute_opened(&env, &case_id, &initiator, &dispute_commitment);
         Ok(())
+    }
+
+    /// Owner or Counterparty: opens a dispute against a broken settlement case with custom TTL ledgers.
+    pub fn open_dispute_with_ttl(
+        env: Env,
+        initiator: Address,
+        case_id: BytesN<32>,
+        dispute_commitment: BytesN<32>,
+        ttl_ledgers: u32,
+    ) -> Result<(), Error> {
+        initiator.require_auth();
+        validate_case_identity(&case_id)?;
+        require_non_zero_commitment(&dispute_commitment)?;
+        if ttl_ledgers == 0 {
+            return Err(Error::InvalidExpiration);
+        }
+
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+
+        let is_owner = initiator == case.owner;
+        let is_cp = case.counterparty.as_ref() == Some(&initiator);
+
+        if !is_owner && !is_cp {
+            return Err(Error::Unauthorized);
+        }
+
+        validate_state_transition(case.status, CaseStatus::Disputed)?;
+
+        if case.counterparty.is_none() {
+            return Err(Error::CounterpartyRequired);
+        }
+
+        let current_ledger = env.ledger().sequence();
+        let expiration_ledger = current_ledger.saturating_add(ttl_ledgers);
+        set_dispute_expiration(&env, &case_id, expiration_ledger);
+        case.dispute_expires_at_ledger = Some(expiration_ledger);
+
+        case.status = CaseStatus::Disputed;
+        set_case_record(&env, &case_id, &case);
+        emit_dispute_opened(&env, &case_id, &initiator, &dispute_commitment);
+        Ok(())
+    }
+
+    /// Permissionless: triggers expiration of an unaddressed dispute after TTL expires.
+    /// Transitions case back to Break with auto-break resolution.
+    pub fn expire_dispute(env: Env, case_id: BytesN<32>) -> Result<(), Error> {
+        validate_case_identity(&case_id)?;
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+
+        if case.status != CaseStatus::Disputed {
+            return Err(Error::InvalidState);
+        }
+
+        let exp = get_dispute_expiration(&env, &case_id).ok_or(Error::DisputeNotExpired)?;
+        let current_ledger = env.ledger().sequence();
+        if current_ledger < exp {
+            return Err(Error::DisputeNotExpired);
+        }
+
+        validate_state_transition(case.status, CaseStatus::Break)?;
+
+        remove_dispute_expiration(&env, &case_id);
+        remove_resolution_record(&env, &case_id, &case.owner);
+        if let Some(ref cp) = case.counterparty {
+            remove_resolution_record(&env, &case_id, cp);
+        }
+        case.dispute_expires_at_ledger = None;
+        case.status = CaseStatus::Break;
+        set_case_record(&env, &case_id, &case);
+        emit_dispute_expired(&env, &case_id, exp, current_ledger);
+        Ok(())
+    }
+
+    /// Reads the dispute expiration ledger sequence for an active dispute, if any.
+    pub fn get_dispute_expiration(env: Env, case_id: BytesN<32>) -> Option<u32> {
+        storage::get_dispute_expiration(&env, &case_id)
     }
 
     /// Owner or Counterparty: submits two-party resolution commitment.
@@ -343,6 +573,12 @@ impl SettlementRegistry {
         let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
         if case.status != CaseStatus::Disputed {
             return Err(Error::InvalidState);
+        }
+
+        if let Some(exp) = get_dispute_expiration(&env, &case_id) {
+            if env.ledger().sequence() >= exp {
+                return Err(Error::DisputeAlreadyExpired);
+            }
         }
 
         let is_owner = resolver == case.owner;
@@ -371,6 +607,8 @@ impl SettlementRegistry {
             if o_comm == c_comm {
                 validate_state_transition(case.status, CaseStatus::Resolved)?;
                 case.status = CaseStatus::Resolved;
+                remove_dispute_expiration(&env, &case_id);
+                case.dispute_expires_at_ledger = None;
                 set_case_record(&env, &case_id, &case);
                 emit_dispute_resolved(&env, &case_id, &o_comm);
             }
@@ -407,6 +645,15 @@ impl SettlementRegistry {
                 if obs_att.role != AttestationRole::Observer {
                     return Err(Error::MissingRequiredAttestation);
                 }
+
+                // Verify observer quorum threshold
+                verify_observer_quorum(
+                    &env,
+                    &case_id,
+                    case.observer_quorum,
+                    &case.owner,
+                    &case.counterparty,
+                )?;
             }
             CaseStatus::Resolved => {
                 validate_state_transition(case.status, CaseStatus::Finalized)?;
@@ -440,6 +687,15 @@ impl SettlementRegistry {
                 if obs_att.role != AttestationRole::Observer {
                     return Err(Error::MissingRequiredAttestation);
                 }
+
+                // Verify observer quorum threshold
+                verify_observer_quorum(
+                    &env,
+                    &case_id,
+                    case.observer_quorum,
+                    &case.owner,
+                    &case.counterparty,
+                )?;
             }
             _ => {
                 return Err(Error::InvalidState);
@@ -457,7 +713,10 @@ impl SettlementRegistry {
 
     /// Reads a settlement case record by ID.
     pub fn get_case(env: Env, case_id: BytesN<32>) -> Result<SettlementCase, Error> {
-        get_case_record(&env, &case_id).ok_or(Error::NotFound)
+        let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
+        case.observer_quorum = storage::get_case_quorum(&env, &case_id);
+        case.dispute_expires_at_ledger = storage::get_dispute_expiration(&env, &case_id);
+        Ok(case)
     }
 
     /// Reads an attestation record by case ID and attestor address.

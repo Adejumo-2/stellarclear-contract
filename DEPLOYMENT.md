@@ -173,9 +173,9 @@ The integration test matrix verifies:
    - Case finalization (`finalize_case`) transitioning state to `Finalized` emitting `CaseFinalized`.
 4. **Case Lifecycle (Break & Dispute Path)**:
    - Observation recording followed by `record_break` with typed `BreakCode` (emitting `CaseBroken`).
-   - Dispute opening (`open_dispute`) by owner emitting `DisputeOpened`.
-   - Two-party resolution agreement (`submit_resolution`) transitioning state to `Resolved` emitting `DisputeResolved`.
-   - Attestation and finalization on resolved dispute cases.
+   - Dispute opening (`open_dispute` / `open_dispute_with_ttl`) by owner emitting `DisputeOpened`.
+   - Two-party resolution agreement (`submit_resolution`) transitioning state to `Resolved` emitting `DisputeResolved` (or permissionless dispute timeout via `expire_dispute` emitting `DisputeExpired`).
+   - Attestation and finalization on resolved dispute cases with required observer quorum.
 5. **Bytecode Execution Verification**: Loads compiled WASM artifact from `target/wasm32v1-none/release/settlement_registry.wasm`, validates SHA-256 checksum, and verifies bytecode execution fidelity in Soroban host environment.
 
 ---

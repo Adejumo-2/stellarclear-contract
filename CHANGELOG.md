@@ -5,6 +5,30 @@ All notable changes to the `StellarClear` Soroban smart contract repository (`st
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **M-of-N Observer Quorum Threshold Logic**:
+  - Configurable per-case observer quorum requirement defaulting to 1 (`DEFAULT_OBSERVER_QUORUM = 1`) preserving full backward compatibility.
+  - Dedicated configuration endpoint `set_case_quorum(case_id, quorum)` and public query `get_case_quorum(case_id)`.
+  - Observer quorum attestation submission endpoint `submit_observer_attestation(case_id, observer, commitment)` and query `get_attested_observers(case_id)`.
+  - Quorum satisfied only by distinct, active registered observers; duplicate submissions and non-observer impersonation rejected.
+  - Enforced in `finalize_case` across both `Matched` and `Resolved` branches.
+  - Emitted `CaseQuorumSet` event on configuration.
+  - Added `InvalidObserverQuorum` and `ObserverQuorumNotMet` error codes.
+- **Dispute Expiration TTL & Permissionless Timeout Mechanism**:
+  - Deterministic ledger-based dispute TTL stored on dispute opening (`DEFAULT_DISPUTE_TTL_LEDGERS = 17_280` ledgers / ~24 hours).
+  - Configurable TTL dispute opening endpoint `open_dispute_with_ttl(initiator, case_id, dispute_commitment, ttl_ledgers)` and query `get_dispute_expiration(case_id)`.
+  - Permissionless `expire_dispute(case_id)` function transitioning unaddressed disputes deterministically from `Disputed` back to `Break` without forging false mutual agreement.
+  - Cleans up pending resolution submissions and dispute expiration on expiration.
+  - Mandated counterparty presence when opening disputes to prevent unresolvable deadlock states.
+  - Rejected late resolution submissions after dispute expiration with `DisputeAlreadyExpired`.
+  - Emitted `DisputeExpired` event recording expiration and closing ledger sequence numbers.
+  - Added `DisputeNotExpired` and `DisputeAlreadyExpired` error codes.
+- **State Machine & Terminal Immutability Enforcement**:
+  - Validated state transition `(Disputed, Break)` in authorization state machine.
+  - Enforced terminal read-only immutability on finalized cases across all attestation and quorum mutation endpoints.
+
 ---
 
 ## [0.1.0] - 2026-09-30
