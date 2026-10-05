@@ -8,17 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **M-of-N Observer Quorum Threshold Logic**:
+- **Pure M-of-N Observer Quorum Threshold Logic**:
   - Configurable per-case observer quorum requirement defaulting to 1 (`DEFAULT_OBSERVER_QUORUM = 1`) preserving full backward compatibility.
+  - Pure M-of-N quorum model: any M distinct valid observer attestations satisfy quorum; original case observer is not mandatory for finalization.
+  - Historical attestation validity: observer authorization is evaluated at submission time; subsequent observer revocation preserves already-recorded attestations.
   - Dedicated configuration endpoint `set_case_quorum(case_id, quorum)` and public query `get_case_quorum(case_id)`.
   - Observer quorum attestation submission endpoint `submit_observer_attestation(case_id, observer, commitment)` and query `get_attested_observers(case_id)`.
-  - Quorum satisfied only by distinct, active registered observers; duplicate submissions and non-observer impersonation rejected.
+  - Protocol bounds: `MAX_OBSERVER_QUORUM = 10` and `MAX_OBSERVERS_PER_CASE = 16`.
+  - Quorum satisfied only by distinct, authorized observers; owner and counterparty cannot attest as observers; duplicate submissions rejected.
   - Enforced in `finalize_case` across both `Matched` and `Resolved` branches.
   - Emitted `CaseQuorumSet` event on configuration.
-  - Added `InvalidObserverQuorum` and `ObserverQuorumNotMet` error codes.
+  - Added `InvalidObserverQuorum`, `ObserverQuorumNotMet`, `ObserverQuorumExceeded`, and `ObserverLimitExceeded` error codes.
 - **Dispute Expiration TTL & Permissionless Timeout Mechanism**:
   - Deterministic ledger-based dispute TTL stored on dispute opening (`DEFAULT_DISPUTE_TTL_LEDGERS = 17_280` ledgers / ~24 hours).
   - Configurable TTL dispute opening endpoint `open_dispute_with_ttl(initiator, case_id, dispute_commitment, ttl_ledgers)` and query `get_dispute_expiration(case_id)`.
+  - Dispute TTL bounds: `MIN_DISPUTE_TTL_LEDGERS = 120` (~10 minutes) and `MAX_DISPUTE_TTL_LEDGERS = 518_400` (~30 days).
   - Permissionless `expire_dispute(case_id)` function transitioning unaddressed disputes deterministically from `Disputed` back to `Break` without forging false mutual agreement.
   - Cleans up pending resolution submissions and dispute expiration on expiration.
   - Mandated counterparty presence when opening disputes to prevent unresolvable deadlock states.
@@ -27,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `DisputeNotExpired` and `DisputeAlreadyExpired` error codes.
 - **State Machine & Terminal Immutability Enforcement**:
   - Validated state transition `(Disputed, Break)` in authorization state machine.
-  - Enforced terminal read-only immutability on finalized cases across all attestation and quorum mutation endpoints.
+  - Enforced terminal read-only immutability on finalized cases across all mutation endpoints.
 
 ---
 
