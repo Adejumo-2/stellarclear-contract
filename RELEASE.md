@@ -42,23 +42,30 @@ The StellarClear protocol maintains an immutable record of historical deployment
 > [!IMPORTANT]
 > The bytecode hash `625f32b9...` represents a later reproducible rebuild on the stable toolchain and must NOT be mistaken for the deployed v0.1.0 bytecode (`1018a81b...`).
 
-### Exported Smart Contract Functions (15)
+### Exported Smart Contract Functions (22)
 
 1. `__constructor(admin: Address)`: Initializes contract admin during deployment.
 2. `add_observer(observer: Address)`: Admin registers authorized observer address.
 3. `remove_observer(observer: Address)`: Admin revokes observer authorization.
 4. `is_observer(observer: Address) -> bool`: Checks whether an address is an authorized observer.
-5. `create_case(case_id, owner, counterparty, terms_commitment, expires_at_ledger)`: Opens new settlement case.
-6. `record_observation(observer, case_id, tx_hash, observed_ledger, observation_commitment)`: Anchors Stellar transaction observation.
-7. `record_match(observer, case_id)`: Records positive reconciliation match.
-8. `record_break(observer, case_id, break_code)`: Records reconciliation break with standardized `BreakCode`.
-9. `open_dispute(disputant, case_id, dispute_commitment)`: Counterparty or owner opens formal dispute on broken case.
-10. `submit_resolution(party, case_id, resolution_commitment)`: Records agreed dispute resolution terms.
-11. `submit_attestation(case_id, role, attestation_commitment)`: Submits cryptographic attestation (Owner, Counterparty, Observer).
-12. `finalize_case(case_id)`: Irreversibly locks settlement outcome and finalizes case.
-13. `get_case(case_id) -> Case`: Retrieves complete on-chain case record.
-14. `get_attestation(case_id, party) -> Option<Attestation>`: Queries registered attestation for a specific party.
-15. `get_resolution(case_id, party) -> Option<BytesN<32>>`: Queries registered dispute resolution terms for a specific party.
+5. `create_case(case_id, owner, counterparty, terms_commitment, expires_at_ledger)`: Opens new settlement case (defaults quorum to 1).
+6. `set_case_quorum(case_id, quorum)`: Owner configures required distinct observer quorum threshold for a case.
+7. `get_case_quorum(case_id) -> u32`: Queries configured observer quorum threshold for a case.
+8. `get_attested_observers(case_id) -> Vec<Address>`: Queries distinct observer addresses that submitted attestations for a case.
+9. `record_observation(observer, case_id, tx_hash, observed_ledger, observation_commitment)`: Anchors Stellar transaction observation.
+10. `record_match(observer, case_id)`: Records positive reconciliation match.
+11. `record_break(observer, case_id, break_code)`: Records reconciliation break with standardized `BreakCode`.
+12. `submit_attestation(case_id, role, attestation_commitment)`: Submits cryptographic attestation (Owner, Counterparty, Observer).
+13. `submit_observer_attestation(case_id, observer, attestation_commitment)`: Submits authorized observer attestation towards M-of-N quorum.
+14. `open_dispute(disputant, case_id, dispute_commitment)`: Counterparty or owner opens formal dispute with default TTL (~24h / 17,280 ledgers) on broken case.
+15. `open_dispute_with_ttl(disputant, case_id, dispute_commitment, ttl_ledgers)`: Counterparty or owner opens formal dispute with custom TTL ledgers on broken case.
+16. `expire_dispute(case_id)`: Permissionless timeout transitioning unaddressed dispute back to `Break` after TTL expires.
+17. `get_dispute_expiration(case_id) -> Option<u32>`: Queries dispute expiration ledger sequence for an active dispute.
+18. `submit_resolution(party, case_id, resolution_commitment)`: Records agreed dispute resolution terms (prior to dispute expiration).
+19. `finalize_case(case_id)`: Irreversibly locks settlement outcome after verifying required role attestations and distinct observer quorum.
+20. `get_case(case_id) -> SettlementCase`: Retrieves complete on-chain case record.
+21. `get_attestation(case_id, party) -> Option<Attestation>`: Queries registered attestation for a specific party.
+22. `get_resolution(case_id, party) -> Option<BytesN<32>>`: Queries registered dispute resolution terms for a specific party.
 
 ---
 
