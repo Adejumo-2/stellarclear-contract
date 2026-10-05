@@ -3235,3 +3235,298 @@ fn test_resource_bound_multiple_case_lifecycle_and_reads() {
         assert_eq!(final_case.status, CaseStatus::Finalized);
     }
 }
+
+// ---------------------------------------------------------------------------
+// OBSERVER QUORUM TESTS
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_observer_quorum_configuration() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let case_id = sample_bytes(&env, 1);
+
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+
+    // Default quorum is 1
+    assert_eq!(client.get_case_quorum(&case_id), 1);
+    let case = client.get_case(&case_id);
+    assert_eq!(case.observer_quorum, 1);
+
+    // Setting quorum to 0 fails
+    assert_eq!(
+        client.try_set_case_quorum(&case_id, &0),
+        Err(Ok(Error::InvalidObserverQuorum))
+    );
+
+    // Setting quorum to 3 succeeds
+    client.set_case_quorum(&case_id, &3);
+    assert_eq!(client.get_case_quorum(&case_id), 3);
+    let updated = client.get_case(&case_id);
+    assert_eq!(updated.observer_quorum, 3);
+}
+
+#[test]
+fn test_observer_quorum_enforcement_and_multi_observer_finalization() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let obs1 = Address::generate(&env);
+    let obs2 = Address::generate(&env);
+    let obs3 = Address::generate(&env);
+
+    client.add_observer(&obs1);
+    client.add_observer(&obs2);
+    client.add_observer(&obs3);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+    client.set_case_quorum(&case_id, &3);
+
+    // Record observation and match with obs1
+    client.record_observation(
+        &obs1,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&obs1, &case_id);
+
+    // Owner attests
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+
+    // obs1 attests -> 1 observer (insufficient for quorum 3)
+    client.submit_attestation(
+        &case_id,
+        &AttestationRole::Observer,
+        &sample_bytes(&env, 11),
+    );
+    assert_eq!(
+        client.try_finalize_case(&case_id),
+        Err(Ok(Error::ObserverQuorumNotMet))
+    );
+
+    // obs2 attests -> 2 observers (still insufficient for quorum 3)
+    client.submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 12));
+    assert_eq!(
+        client.try_finalize_case(&case_id),
+        Err(Ok(Error::ObserverQuorumNotMet))
+    );
+
+    // duplicate attestation from obs2 fails
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 13)),
+        Err(Ok(Error::AttestationAlreadyExists))
+    );
+
+    // obs3 attests -> 3 distinct registered observers
+    client.submit_observer_attestation(&case_id, &obs3, &sample_bytes(&env, 14));
+
+    // Finalization now succeeds!
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+}
+
+#[test]
+fn test_observer_quorum_1_legacy_path() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let observer = Address::generate(&env);
+    client.add_observer(&observer);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+
+    // Default quorum is 1
+    assert_eq!(client.get_case_quorum(&case_id), 1);
+
+    client.record_observation(
+        &observer,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&observer, &case_id);
+
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+    client.submit_attestation(
+        &case_id,
+        &AttestationRole::Observer,
+        &sample_bytes(&env, 11),
+    );
+
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+    assert_eq!(final_case.observer_quorum, 1);
+}
+
+#[test]
+fn test_observer_quorum_2_success_and_failure() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let obs1 = Address::generate(&env);
+    let obs2 = Address::generate(&env);
+
+    client.add_observer(&obs1);
+    client.add_observer(&obs2);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+    client.set_case_quorum(&case_id, &2);
+
+    client.record_observation(
+        &obs1,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&obs1, &case_id);
+
+    // Owner attests
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+
+    // obs1 attests -> 1 observer (insufficient for quorum 2)
+    client.submit_attestation(
+        &case_id,
+        &AttestationRole::Observer,
+        &sample_bytes(&env, 11),
+    );
+    assert_eq!(
+        client.try_finalize_case(&case_id),
+        Err(Ok(Error::ObserverQuorumNotMet))
+    );
+
+    // obs2 attests via submit_observer_attestation
+    client.submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 12));
+
+    // Quorum 2 is now met, finalization succeeds
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+}
+
+#[test]
+fn test_observer_quorum_duplicate_and_repeated_attestations() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let obs1 = Address::generate(&env);
+    client.add_observer(&obs1);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+    client.set_case_quorum(&case_id, &3);
+
+    client.record_observation(
+        &obs1,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&obs1, &case_id);
+
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+    client.submit_attestation(
+        &case_id,
+        &AttestationRole::Observer,
+        &sample_bytes(&env, 11),
+    );
+
+    // obs1 trying to submit duplicate attestation fails
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &obs1, &sample_bytes(&env, 12)),
+        Err(Ok(Error::AttestationAlreadyExists))
+    );
+
+    // Any one observer CANNOT finalize a quorum-3 case
+    assert_eq!(
+        client.try_finalize_case(&case_id),
+        Err(Ok(Error::ObserverQuorumNotMet))
+    );
+}
+
+#[test]
+fn test_observer_quorum_revoked_observer_fails_quorum() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let obs1 = Address::generate(&env);
+    let obs2 = Address::generate(&env);
+
+    client.add_observer(&obs1);
+    client.add_observer(&obs2);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+    client.set_case_quorum(&case_id, &2);
+
+    client.record_observation(
+        &obs1,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&obs1, &case_id);
+
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+    client.submit_attestation(
+        &case_id,
+        &AttestationRole::Observer,
+        &sample_bytes(&env, 11),
+    );
+    client.submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 12));
+
+    // Revoke obs2
+    client.remove_observer(&obs2);
+
+    // Finalization fails because obs2 is no longer active registered observer
+    assert_eq!(
+        client.try_finalize_case(&case_id),
+        Err(Ok(Error::ObserverQuorumNotMet))
+    );
+
+    // Unregistered observer cannot submit attestation
+    let obs3 = Address::generate(&env);
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &obs3, &sample_bytes(&env, 13)),
+        Err(Ok(Error::ObserverNotRegistered))
+    );
+}
+
+#[test]
+fn test_role_separation_owner_and_counterparty_cannot_attest_as_observer() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let counterparty = Address::generate(&env);
+    let obs = Address::generate(&env);
+
+    client.add_observer(&obs);
+    // Adversarial: admin registers owner and counterparty as observers
+    client.add_observer(&owner);
+    client.add_observer(&counterparty);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(
+        &case_id,
+        &owner,
+        &Some(counterparty.clone()),
+        &sample_bytes(&env, 2),
+        &500,
+    );
+
+    // Owner cannot submit observer attestation for their own case
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &owner, &sample_bytes(&env, 10)),
+        Err(Ok(Error::Unauthorized))
+    );
+
+    // Counterparty cannot submit observer attestation for their case
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &counterparty, &sample_bytes(&env, 11)),
+        Err(Ok(Error::Unauthorized))
+    );
+}
