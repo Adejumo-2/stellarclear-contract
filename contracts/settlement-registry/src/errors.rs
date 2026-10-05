@@ -41,4 +41,6 @@ pub enum Error {
     InvalidLedger = 17,
     /// Observer quorum threshold must be a positive integer.
     InvalidObserverQuorum = 18,
+    /// Required observer quorum threshold was not met.
+    ObserverQuorumNotMet = 19,
 }

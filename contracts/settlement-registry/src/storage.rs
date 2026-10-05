@@ -21,6 +21,8 @@ pub enum DataKey {
     Resolution(BytesN<32>, Address),
     /// Configured observer quorum threshold for a case (persistent storage).
     CaseQuorum(BytesN<32>),
+    /// List of distinct observer addresses that submitted attestations for a case (persistent storage).
+    CaseAttestedObservers(BytesN<32>),
 }
 
 // Protocol version constant
@@ -158,4 +160,37 @@ pub fn get_case_quorum(env: &Env, case_id: &BytesN<32>) -> u32 {
 pub fn set_case_quorum(env: &Env, case_id: &BytesN<32>, quorum: u32) {
     let key = DataKey::CaseQuorum(case_id.clone());
     env.storage().persistent().set(&key, &quorum);
+}
+
+// Storage helpers for Case Attested Observers (persistent)
+pub fn get_case_attested_observers(env: &Env, case_id: &BytesN<32>) -> soroban_sdk::Vec<Address> {
+    let key = DataKey::CaseAttestedObservers(case_id.clone());
+    env.storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| soroban_sdk::Vec::new(env))
+}
+
+pub fn set_case_attested_observers(
+    env: &Env,
+    case_id: &BytesN<32>,
+    observers: &soroban_sdk::Vec<Address>,
+) {
+    let key = DataKey::CaseAttestedObservers(case_id.clone());
+    env.storage().persistent().set(&key, observers);
+}
+
+pub fn add_case_attested_observer(env: &Env, case_id: &BytesN<32>, observer: &Address) {
+    let mut observers = get_case_attested_observers(env, case_id);
+    let mut already_present = false;
+    for existing in observers.iter() {
+        if &existing == observer {
+            already_present = true;
+            break;
+        }
+    }
+    if !already_present {
+        observers.push_back(observer.clone());
+        set_case_attested_observers(env, case_id, &observers);
+    }
 }
