@@ -60,7 +60,8 @@ use types::{
     SettlementCase,
 };
 
-/// Pure helper: counts valid distinct active registered observer attestations for a case.
+/// Pure helper: counts valid distinct observer attestations for a case.
+/// Authorization is verified at submission time; recorded observer attestations remain valid historically.
 fn get_observer_attestation_count(
     env: &Env,
     case_id: &BytesN<32>,
@@ -77,9 +78,6 @@ fn get_observer_attestation_count(
             if &obs == cp {
                 continue;
             }
-        }
-        if !is_observer_registered(env, &obs) {
-            continue;
         }
         if let Some(att) = get_attestation_record(env, case_id, &obs) {
             if att.role == AttestationRole::Observer {
@@ -231,6 +229,9 @@ impl SettlementRegistry {
     pub fn set_case_quorum(env: Env, case_id: BytesN<32>, quorum: u32) -> Result<(), Error> {
         if quorum == 0 {
             return Err(Error::InvalidObserverQuorum);
+        }
+        if quorum > storage::MAX_OBSERVER_QUORUM {
+            return Err(Error::ObserverQuorumExceeded);
         }
         let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
         case.owner.require_auth();
@@ -392,10 +393,10 @@ impl SettlementRegistry {
             attested_at_ledger: current_ledger,
         };
 
-        set_attestation_record(&env, &case_id, &attestor, &attestation);
         if role == AttestationRole::Observer {
-            add_case_attested_observer(&env, &case_id, &attestor);
+            add_case_attested_observer(&env, &case_id, &attestor)?;
         }
+        set_attestation_record(&env, &case_id, &attestor, &attestation);
         emit_attestation_submitted(&env, &case_id, &attestor, role);
         Ok(())
     }
@@ -429,6 +430,7 @@ impl SettlementRegistry {
         if has_attestation_record(&env, &case_id, &observer) {
             return Err(Error::AttestationAlreadyExists);
         }
+        add_case_attested_observer(&env, &case_id, &observer)?;
         let current_ledger = env.ledger().sequence();
         let attestation = Attestation {
             role: AttestationRole::Observer,
@@ -436,7 +438,6 @@ impl SettlementRegistry {
             attested_at_ledger: current_ledger,
         };
         set_attestation_record(&env, &case_id, &observer, &attestation);
-        add_case_attested_observer(&env, &case_id, &observer);
         emit_attestation_submitted(&env, &case_id, &observer, AttestationRole::Observer);
         Ok(())
     }
@@ -494,9 +495,6 @@ impl SettlementRegistry {
         initiator.require_auth();
         validate_case_identity(&case_id)?;
         require_non_zero_commitment(&dispute_commitment)?;
-        if ttl_ledgers == 0 {
-            return Err(Error::InvalidExpiration);
-        }
 
         let mut case = get_case_record(&env, &case_id).ok_or(Error::NotFound)?;
 
@@ -511,6 +509,12 @@ impl SettlementRegistry {
 
         if case.counterparty.is_none() {
             return Err(Error::CounterpartyRequired);
+        }
+
+        if !(storage::MIN_DISPUTE_TTL_LEDGERS..=storage::MAX_DISPUTE_TTL_LEDGERS)
+            .contains(&ttl_ledgers)
+        {
+            return Err(Error::InvalidExpiration);
         }
 
         let current_ledger = env.ledger().sequence();
@@ -634,19 +638,7 @@ impl SettlementRegistry {
                     return Err(Error::MissingRequiredAttestation);
                 }
 
-                // Require observer attestation
-                let obs =
-                    get_case_observer(&env, &case_id).ok_or(Error::MissingRequiredAttestation)?;
-                if !is_observer_registered(&env, &obs) {
-                    return Err(Error::MissingRequiredAttestation);
-                }
-                let obs_att = get_attestation_record(&env, &case_id, &obs)
-                    .ok_or(Error::MissingRequiredAttestation)?;
-                if obs_att.role != AttestationRole::Observer {
-                    return Err(Error::MissingRequiredAttestation);
-                }
-
-                // Verify observer quorum threshold
+                // Verify pure observer quorum threshold
                 verify_observer_quorum(
                     &env,
                     &case_id,
@@ -676,19 +668,7 @@ impl SettlementRegistry {
                     return Err(Error::MissingRequiredAttestation);
                 }
 
-                // Require observer attestation
-                let obs =
-                    get_case_observer(&env, &case_id).ok_or(Error::MissingRequiredAttestation)?;
-                if !is_observer_registered(&env, &obs) {
-                    return Err(Error::MissingRequiredAttestation);
-                }
-                let obs_att = get_attestation_record(&env, &case_id, &obs)
-                    .ok_or(Error::MissingRequiredAttestation)?;
-                if obs_att.role != AttestationRole::Observer {
-                    return Err(Error::MissingRequiredAttestation);
-                }
-
-                // Verify observer quorum threshold
+                // Verify pure observer quorum threshold
                 verify_observer_quorum(
                     &env,
                     &case_id,

@@ -47,4 +47,8 @@ pub enum Error {
     DisputeNotExpired = 20,
     /// Dispute has already expired; resolution submissions are no longer accepted.
     DisputeAlreadyExpired = 21,
+    /// Observer quorum threshold exceeds maximum allowed protocol limit.
+    ObserverQuorumExceeded = 22,
+    /// Maximum number of distinct observer attestations per case exceeded.
+    ObserverLimitExceeded = 23,
 }

@@ -33,8 +33,20 @@ pub const PROTOCOL_VERSION: u32 = 1;
 /// Default observer quorum threshold for newly created settlement cases.
 pub const DEFAULT_OBSERVER_QUORUM: u32 = 1;
 
+/// Maximum allowed observer quorum threshold per case to guarantee bounded execution.
+pub const MAX_OBSERVER_QUORUM: u32 = 10;
+
+/// Maximum distinct authorized observers that can attest per case to bound storage size.
+pub const MAX_OBSERVERS_PER_CASE: u32 = 16;
+
 /// Default dispute expiration TTL in ledgers (~24 hours at 5s/ledger).
 pub const DEFAULT_DISPUTE_TTL_LEDGERS: u32 = 17_280;
+
+/// Minimum dispute expiration TTL in ledgers (~10 minutes at 5s/ledger).
+pub const MIN_DISPUTE_TTL_LEDGERS: u32 = 120;
+
+/// Maximum dispute expiration TTL in ledgers (~30 days at 5s/ledger).
+pub const MAX_DISPUTE_TTL_LEDGERS: u32 = 518_400;
 
 // Storage helpers for Admin
 pub fn get_admin(env: &Env) -> Option<Address> {
@@ -190,7 +202,11 @@ pub fn set_case_attested_observers(
     env.storage().persistent().set(&key, observers);
 }
 
-pub fn add_case_attested_observer(env: &Env, case_id: &BytesN<32>, observer: &Address) {
+pub fn add_case_attested_observer(
+    env: &Env,
+    case_id: &BytesN<32>,
+    observer: &Address,
+) -> Result<(), crate::errors::Error> {
     let mut observers = get_case_attested_observers(env, case_id);
     let mut already_present = false;
     for existing in observers.iter() {
@@ -200,9 +216,13 @@ pub fn add_case_attested_observer(env: &Env, case_id: &BytesN<32>, observer: &Ad
         }
     }
     if !already_present {
+        if observers.len() >= MAX_OBSERVERS_PER_CASE {
+            return Err(crate::errors::Error::ObserverLimitExceeded);
+        }
         observers.push_back(observer.clone());
         set_case_attested_observers(env, case_id, &observers);
     }
+    Ok(())
 }
 
 // Storage helpers for Dispute Expiration (persistent)

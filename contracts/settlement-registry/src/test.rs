@@ -769,7 +769,7 @@ fn test_finalize_matched_case_missing_attestation_fails() {
     client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
 
     let res = client.try_finalize_case(&case_id);
-    assert_eq!(res, Err(Ok(Error::MissingRequiredAttestation)));
+    assert_eq!(res, Err(Ok(Error::ObserverQuorumNotMet)));
 }
 
 #[test]
@@ -915,7 +915,31 @@ fn test_finalized_case_cannot_mutate() {
         Err(Ok(Error::InvalidState))
     );
     assert_eq!(
+        client.try_set_case_quorum(&case_id, &2),
+        Err(Ok(Error::InvalidState))
+    );
+    assert_eq!(
+        client.try_submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 20)),
+        Err(Ok(Error::InvalidState))
+    );
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &observer, &sample_bytes(&env, 21)),
+        Err(Ok(Error::InvalidState))
+    );
+    assert_eq!(
         client.try_open_dispute(&owner, &case_id, &sample_bytes(&env, 30)),
+        Err(Ok(Error::InvalidState))
+    );
+    assert_eq!(
+        client.try_open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 30), &200),
+        Err(Ok(Error::InvalidState))
+    );
+    assert_eq!(
+        client.try_submit_resolution(&owner, &case_id, &sample_bytes(&env, 31)),
+        Err(Ok(Error::InvalidState))
+    );
+    assert_eq!(
+        client.try_expire_dispute(&case_id),
         Err(Ok(Error::InvalidState))
     );
     assert_eq!(
@@ -1474,12 +1498,12 @@ fn test_auth_finalization_requires_active_registered_observer() {
         &sample_bytes(&env, 11),
     );
 
-    // Revoke observer before finalization
+    // Revoke observer after attestation submission
     client.remove_observer(&observer);
 
-    // Finalization must fail because observer is no longer active
-    let res = client.try_finalize_case(&case_id);
-    assert_eq!(res, Err(Ok(Error::MissingRequiredAttestation)));
+    // Finalization succeeds because observer was authorized at attestation submission time
+    client.finalize_case(&case_id);
+    assert_eq!(client.get_case(&case_id).status, CaseStatus::Finalized);
 }
 
 // ---------------------------------------------------------------------------
@@ -3011,7 +3035,7 @@ fn test_rc_security_attestation_and_finalization_rules() {
     client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
     assert_eq!(
         client.try_finalize_case(&case_id),
-        Err(Ok(Error::MissingRequiredAttestation))
+        Err(Ok(Error::ObserverQuorumNotMet))
     );
 
     // Finalization succeeds once observer attests
@@ -3411,6 +3435,45 @@ fn test_observer_quorum_2_success_and_failure() {
 }
 
 #[test]
+fn test_observer_quorum_original_observer_not_mandatory_for_finalization() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let original_obs = Address::generate(&env);
+    let obs_a = Address::generate(&env);
+    let obs_b = Address::generate(&env);
+
+    client.add_observer(&original_obs);
+    client.add_observer(&obs_a);
+    client.add_observer(&obs_b);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(&case_id, &owner, &None, &sample_bytes(&env, 2), &500);
+    client.set_case_quorum(&case_id, &2);
+
+    // original_obs records observation and match, but NEVER attests
+    client.record_observation(
+        &original_obs,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+    client.record_match(&original_obs, &case_id);
+
+    // Owner attests
+    client.submit_attestation(&case_id, &AttestationRole::Owner, &sample_bytes(&env, 10));
+
+    // Two distinct observers (obs_a, obs_b) attest; original_obs does NOT attest
+    client.submit_observer_attestation(&case_id, &obs_a, &sample_bytes(&env, 20));
+    client.submit_observer_attestation(&case_id, &obs_b, &sample_bytes(&env, 21));
+
+    // Pure M-of-N finalization succeeds!
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+}
+
+#[test]
 fn test_observer_quorum_duplicate_and_repeated_attestations() {
     let (env, _admin, client) = create_test_env();
     let owner = Address::generate(&env);
@@ -3451,7 +3514,7 @@ fn test_observer_quorum_duplicate_and_repeated_attestations() {
 }
 
 #[test]
-fn test_observer_quorum_revoked_observer_fails_quorum() {
+fn test_observer_quorum_preserves_historical_attestation_after_revocation() {
     let (env, _admin, client) = create_test_env();
     let owner = Address::generate(&env);
     let obs1 = Address::generate(&env);
@@ -3481,19 +3544,26 @@ fn test_observer_quorum_revoked_observer_fails_quorum() {
     );
     client.submit_observer_attestation(&case_id, &obs2, &sample_bytes(&env, 12));
 
-    // Revoke obs2
+    // Revoke obs2 after its attestation has already been recorded
     client.remove_observer(&obs2);
 
-    // Finalization fails because obs2 is no longer active registered observer
+    // Finalization succeeds because obs2 was authorized at attestation submission time
+    client.finalize_case(&case_id);
+    let final_case = client.get_case(&case_id);
+    assert_eq!(final_case.status, CaseStatus::Finalized);
+
+    // Newly revoked observer cannot submit a new attestation
+    let case2_id = sample_bytes(&env, 99);
+    client.create_case(&case2_id, &owner, &None, &sample_bytes(&env, 2), &500);
     assert_eq!(
-        client.try_finalize_case(&case_id),
-        Err(Ok(Error::ObserverQuorumNotMet))
+        client.try_submit_observer_attestation(&case2_id, &obs2, &sample_bytes(&env, 13)),
+        Err(Ok(Error::ObserverNotRegistered))
     );
 
     // Unregistered observer cannot submit attestation
     let obs3 = Address::generate(&env);
     assert_eq!(
-        client.try_submit_observer_attestation(&case_id, &obs3, &sample_bytes(&env, 13)),
+        client.try_submit_observer_attestation(&case2_id, &obs3, &sample_bytes(&env, 14)),
         Err(Ok(Error::ObserverNotRegistered))
     );
 }
@@ -3562,21 +3632,21 @@ fn test_dispute_expiration_lifecycle() {
     );
     client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
 
-    // Open dispute with TTL = 100 ledgers
-    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &100);
+    // Open dispute with TTL = 200 ledgers
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &200);
     let case = client.get_case(&case_id);
     assert_eq!(case.status, CaseStatus::Disputed);
-    assert_eq!(case.dispute_expires_at_ledger, Some(200)); // current ledger 100 + 100
-    assert_eq!(client.get_dispute_expiration(&case_id), Some(200));
+    assert_eq!(case.dispute_expires_at_ledger, Some(300)); // current ledger 100 + 200
+    assert_eq!(client.get_dispute_expiration(&case_id), Some(300));
 
-    // Cannot expire before ledger 200
+    // Cannot expire before ledger 300
     assert_eq!(
         client.try_expire_dispute(&case_id),
         Err(Ok(Error::DisputeNotExpired))
     );
 
-    // Advance ledger to 201
-    env.ledger().set_sequence_number(201);
+    // Advance ledger to 301
+    env.ledger().set_sequence_number(301);
 
     // Expire dispute
     client.expire_dispute(&case_id);
@@ -3661,7 +3731,7 @@ fn test_dispute_cannot_open_without_counterparty() {
 
     // open_dispute_with_ttl fails with CounterpartyRequired
     assert_eq!(
-        client.try_open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 10), &100),
+        client.try_open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 10), &200),
         Err(Ok(Error::CounterpartyRequired))
     );
 }
@@ -3692,30 +3762,30 @@ fn test_dispute_expiry_timing_boundaries() {
     );
     client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
 
-    // Ledger is 100. Open dispute with TTL = 100 ledgers -> expires at 200
-    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &100);
-    assert_eq!(client.get_dispute_expiration(&case_id), Some(200));
+    // Ledger is 100. Open dispute with TTL = 200 ledgers -> expires at 300
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &200);
+    assert_eq!(client.get_dispute_expiration(&case_id), Some(300));
 
-    // Immediately before TTL (ledger 199): rejects expiry
-    env.ledger().set_sequence_number(199);
+    // Immediately before TTL (ledger 299): rejects expiry
+    env.ledger().set_sequence_number(299);
     assert_eq!(
         client.try_expire_dispute(&case_id),
         Err(Ok(Error::DisputeNotExpired))
     );
 
-    // Exactly at TTL (ledger 200): succeeds!
-    env.ledger().set_sequence_number(200);
+    // Exactly at TTL (ledger 300): succeeds!
+    env.ledger().set_sequence_number(300);
     client.expire_dispute(&case_id);
     let case = client.get_case(&case_id);
     assert_eq!(case.status, CaseStatus::Break);
     assert_eq!(case.dispute_expires_at_ledger, None);
 
-    // Reopen dispute with TTL = 50 at ledger 200 -> expires at 250
-    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 21), &50);
-    assert_eq!(client.get_dispute_expiration(&case_id), Some(250));
+    // Reopen dispute with TTL = 150 at ledger 300 -> expires at 450
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 21), &150);
+    assert_eq!(client.get_dispute_expiration(&case_id), Some(450));
 
-    // After TTL (ledger 300): succeeds!
-    env.ledger().set_sequence_number(300);
+    // After TTL (ledger 500): succeeds!
+    env.ledger().set_sequence_number(500);
     client.expire_dispute(&case_id);
     let case2 = client.get_case(&case_id);
     assert_eq!(case2.status, CaseStatus::Break);
@@ -3757,8 +3827,8 @@ fn test_dispute_expiry_state_validation_and_idempotence() {
     );
     client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
 
-    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &50);
-    env.ledger().set_sequence_number(151);
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &200);
+    env.ledger().set_sequence_number(301);
 
     // First expiry succeeds
     client.expire_dispute(&case_id);
@@ -3797,11 +3867,11 @@ fn test_dispute_already_expired_rejects_resolution_submission() {
     );
     client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
 
-    // Dispute expires at ledger 200
-    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &100);
+    // Dispute expires at ledger 300
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &200);
 
-    // Advance ledger to 200 (expired)
-    env.ledger().set_sequence_number(200);
+    // Advance ledger to 300 (expired)
+    env.ledger().set_sequence_number(300);
 
     // Submitting resolution after expiration ledger fails with DisputeAlreadyExpired
     assert_eq!(
@@ -3890,10 +3960,127 @@ fn test_event_completeness_quorum_and_dispute_expired() {
     );
     client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
 
-    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &10);
-    env.ledger().set_sequence_number(111);
+    client.open_dispute_with_ttl(&owner, &case_id, &sample_bytes(&env, 20), &200);
+    env.ledger().set_sequence_number(301);
 
     // Event on expire_dispute (DisputeExpired emitted)
     client.expire_dispute(&case_id);
     assert_eq!(env.events().all().events().len(), 1);
+}
+
+#[test]
+fn test_quorum_and_dispute_ttl_bounds_and_invariants() {
+    let (env, _admin, client) = create_test_env();
+    let owner = Address::generate(&env);
+    let counterparty = Address::generate(&env);
+    let observer = Address::generate(&env);
+    client.add_observer(&observer);
+
+    let case_id = sample_bytes(&env, 1);
+    client.create_case(
+        &case_id,
+        &owner,
+        &Some(counterparty.clone()),
+        &sample_bytes(&env, 2),
+        &1_000_000,
+    );
+
+    // 1. set_case_quorum rejects 0 with InvalidObserverQuorum
+    assert_eq!(
+        client.try_set_case_quorum(&case_id, &0),
+        Err(Ok(Error::InvalidObserverQuorum))
+    );
+
+    // 2. set_case_quorum rejects > MAX_OBSERVER_QUORUM (10) with ObserverQuorumExceeded
+    assert_eq!(
+        client.try_set_case_quorum(&case_id, &(crate::storage::MAX_OBSERVER_QUORUM + 1)),
+        Err(Ok(Error::ObserverQuorumExceeded))
+    );
+
+    // 3. set_case_quorum accepts MAX_OBSERVER_QUORUM (10)
+    assert_eq!(
+        client.try_set_case_quorum(&case_id, &crate::storage::MAX_OBSERVER_QUORUM),
+        Ok(Ok(()))
+    );
+    assert_eq!(
+        client.get_case_quorum(&case_id),
+        crate::storage::MAX_OBSERVER_QUORUM
+    );
+
+    // Transition to Observed then Break
+    client.record_observation(
+        &observer,
+        &case_id,
+        &sample_bytes(&env, 3),
+        &100,
+        &sample_bytes(&env, 4),
+    );
+
+    // 4. Test observer limit per case: MAX_OBSERVERS_PER_CASE (16)
+    // Register 16 observers and submit attestations
+    for i in 1..=crate::storage::MAX_OBSERVERS_PER_CASE {
+        let obs = Address::generate(&env);
+        client.add_observer(&obs);
+        assert_eq!(
+            client.try_submit_observer_attestation(
+                &case_id,
+                &obs,
+                &sample_bytes(&env, (100 + i) as u8)
+            ),
+            Ok(Ok(()))
+        );
+    }
+    assert_eq!(
+        client.get_attested_observers(&case_id).len(),
+        crate::storage::MAX_OBSERVERS_PER_CASE
+    );
+
+    // 5. 17th observer attestation exceeds limit -> ObserverLimitExceeded
+    let obs_17 = Address::generate(&env);
+    client.add_observer(&obs_17);
+    assert_eq!(
+        client.try_submit_observer_attestation(&case_id, &obs_17, &sample_bytes(&env, 200)),
+        Err(Ok(Error::ObserverLimitExceeded))
+    );
+
+    // Move to Break
+    client.record_break(&observer, &case_id, &BreakCode::AmountMismatch);
+
+    // 6. open_dispute_with_ttl rejects < MIN_DISPUTE_TTL_LEDGERS
+    assert_eq!(
+        client.try_open_dispute_with_ttl(
+            &owner,
+            &case_id,
+            &sample_bytes(&env, 50),
+            &(crate::storage::MIN_DISPUTE_TTL_LEDGERS - 1)
+        ),
+        Err(Ok(Error::InvalidExpiration))
+    );
+
+    // 7. open_dispute_with_ttl rejects > MAX_DISPUTE_TTL_LEDGERS
+    assert_eq!(
+        client.try_open_dispute_with_ttl(
+            &owner,
+            &case_id,
+            &sample_bytes(&env, 50),
+            &(crate::storage::MAX_DISPUTE_TTL_LEDGERS + 1)
+        ),
+        Err(Ok(Error::InvalidExpiration))
+    );
+
+    // 8. open_dispute_with_ttl accepts MIN_DISPUTE_TTL_LEDGERS
+    let cur_ledger = env.ledger().sequence();
+    assert_eq!(
+        client.try_open_dispute_with_ttl(
+            &owner,
+            &case_id,
+            &sample_bytes(&env, 50),
+            &crate::storage::MIN_DISPUTE_TTL_LEDGERS
+        ),
+        Ok(Ok(()))
+    );
+    assert_eq!(
+        client.get_dispute_expiration(&case_id),
+        Some(cur_ledger + crate::storage::MIN_DISPUTE_TTL_LEDGERS)
+    );
 }
