@@ -61,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - GitHub Actions workflows for continuous integration (`.github/workflows/ci.yml`), release verification (`.github/workflows/release-verification.yml`), and security regression testing (`.github/workflows/security-verification.yml`).
   - Automated system dependency provisioning (`dbus`, `libdbus-1-dev`, `pkg-config`, `libssl-dev`, `libudev-dev`).
 - **Documentation**:
-  - Security model, authorization matrix, threat model, and audit status in `SECURITY.md`.
+  - Security model, authorization matrix, and audit status in `SECURITY.md` (the STRIDE threat model and monitoring plan live in the application repo: `docs/threat-model.md`, `docs/monitoring-plan.md`).
   - Production/testnet release checklist, verification chain, and packaging specification in `RELEASE.md`.
   - Step-by-step deployment guide and testnet verification instructions in `DEPLOYMENT.md`.
 
