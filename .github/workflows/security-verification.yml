@@ -22,6 +22,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.99.0
           targets: wasm32v1-none
           components: rustfmt, clippy
 
