@@ -28,14 +28,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.84.0
           targets: wasm32v1-none
           components: rustfmt, clippy
 
       - name: Install Stellar CLI
         run: |
-          (curl -sLf "https://github.com/stellar/stellar-cli/releases/download/v28.1.0/stellar-cli-28.1.0-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/stellar.tar.gz && sudo tar -xzf /tmp/stellar.tar.gz -C /usr/local/bin/) || cargo install --locked stellar-cli --version 28.1.0
-          stellar version || true
+          curl -sLf "https://github.com/stellar/stellar-cli/releases/download/v28.1.0/stellar-cli-28.1.0-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/stellar.tar.gz
+          sudo tar -xzf /tmp/stellar.tar.gz -C /usr/local/bin/
+          sudo chmod +x /usr/local/bin/stellar
+          stellar --version
 
       - name: Run verification suite
         run: ./scripts/check.sh

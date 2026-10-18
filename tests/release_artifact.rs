@@ -6,7 +6,7 @@ use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, BytesN, Env};
 
 const EXPECTED_RELEASE_CHECKSUM: &str =
-    "1018a81b1ac95046cb00466ceda7ee347204c08b71b1c51b3c9611dd32215d66";
+    "0073a4cb2027140ac34e4db6c64c2d4104590ec60cf0ef2e424909eba9ae36ac";
 
 fn sample_bytes(env: &Env, val: u8) -> BytesN<32> {
     let raw = [val; 32];

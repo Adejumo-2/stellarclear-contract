@@ -5,7 +5,6 @@ echo "======================================================"
 echo " Building StellarClear SettlementRegistry Contract"
 echo "======================================================"
 
-# Determine project root
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -18,17 +17,18 @@ fi
 VERSION="$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f 2 || echo "0.1.0")"
 echo "Target Contract Version: $VERSION"
 
-echo "Building reproducible contract via stellar CLI..."
-if command -v stellar &>/dev/null; then
-    stellar contract build
-else
-    echo "stellar CLI not found in PATH, falling back to cargo rustc..."
-    CARGO_BUILD_RUSTFLAGS="--remap-path-prefix=$(pwd)=" cargo rustc \
-        --manifest-path contracts/settlement-registry/Cargo.toml \
-        --crate-type cdylib \
-        --target wasm32v1-none \
-        --release
-fi
+echo "Building reproducible contract..."
+
+# Set reproducible build flags - ensure consistent output
+export CARGO_BUILD_RUSTFLAGS="--remap-path-prefix=$(pwd)= -C opt-level=z -C link-arg=-s -C debuginfo=0"
+export RUSTFLAGS="--remap-path-prefix=$(pwd)= -C opt-level=z -C link-arg=-s -C debuginfo=0"
+
+# Always use cargo rustc for reproducibility (avoid stellar CLI)
+cargo rustc \
+    --manifest-path contracts/settlement-registry/Cargo.toml \
+    --crate-type cdylib \
+    --target wasm32v1-none \
+    --release
 
 WASM_FILE="target/wasm32v1-none/release/settlement_registry.wasm"
 SHA_FILE="${WASM_FILE}.sha256"

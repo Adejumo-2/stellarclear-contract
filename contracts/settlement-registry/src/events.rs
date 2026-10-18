@@ -27,6 +27,14 @@ pub struct CaseCreated {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CaseQuorumSet {
+    #[topic]
+    pub case_id: BytesN<32>,
+    pub quorum: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ObservationRecorded {
     #[topic]
     pub case_id: BytesN<32>,
@@ -89,6 +97,15 @@ pub struct DisputeResolved {
 
 #[contractevent]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeExpired {
+    #[topic]
+    pub case_id: BytesN<32>,
+    pub expiration_ledger: u32,
+    pub closed_at_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CaseFinalized {
     #[topic]
     pub case_id: BytesN<32>,
@@ -121,6 +138,14 @@ pub fn emit_case_created(
         owner: owner.clone(),
         counterparty: counterparty.clone(),
         expires_at_ledger,
+    }
+    .publish(env);
+}
+
+pub fn emit_case_quorum_set(env: &Env, case_id: &BytesN<32>, quorum: u32) {
+    CaseQuorumSet {
+        case_id: case_id.clone(),
+        quorum,
     }
     .publish(env);
 }
@@ -209,6 +234,20 @@ pub fn emit_dispute_resolved(env: &Env, case_id: &BytesN<32>, resolution_commitm
     DisputeResolved {
         case_id: case_id.clone(),
         resolution_commitment: resolution_commitment.clone(),
+    }
+    .publish(env);
+}
+
+pub fn emit_dispute_expired(
+    env: &Env,
+    case_id: &BytesN<32>,
+    expiration_ledger: u32,
+    closed_at_ledger: u32,
+) {
+    DisputeExpired {
+        case_id: case_id.clone(),
+        expiration_ledger,
+        closed_at_ledger,
     }
     .publish(env);
 }

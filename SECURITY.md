@@ -20,14 +20,17 @@ The `SettlementRegistry` contract enforces strict role-based access control, cry
 | :--- | :--- | :--- |
 | **Contract Initialization** (`__constructor`) | **Deployer / Network** | One-time initialization; sets admin and protocol version `1` |
 | **Observer Registration** (`add_observer` / `remove_observer`) | **Contract Admin** (`require_admin_auth()`) | Single-admin control initialized at deployment |
-| **Case Creation** (`create_case`) | **Case Owner** (`owner.require_auth()`) | Non-zero `case_id`, non-zero `terms_commitment`, `expires_at_ledger > current_ledger`, `counterparty != owner` |
+| **Case Creation** (`create_case`) | **Case Owner** (`owner.require_auth()`) | Non-zero `case_id`, non-zero `terms_commitment`, `expires_at_ledger > current_ledger`, `counterparty != owner`; initializes default quorum to `1` |
+| **Case Quorum Configuration** (`set_case_quorum`) | **Case Owner** (`owner.require_auth()`) | Case must exist and not be `Finalized`; valid quorum threshold (`1 <= quorum <= MAX_OBSERVER_QUORUM` (10)) |
 | **Observation Recording** (`record_observation`) | **Registered Observer** (`require_observer_auth()`) | Case must be in `Open` state; non-zero `tx_hash` & `observation_commitment`; `0 < observed_ledger <= current_ledger` |
 | **Reconciliation Matching** (`record_match`) | **Registered Observer** (`require_observer_auth()`) | Case must be in `Observed` state; sets status and decision to `Matched` |
 | **Reconciliation Break** (`record_break`) | **Registered Observer** (`require_observer_auth()`) | Case must be in `Observed` state; standardized `BreakCode` recorded; sets status and decision to `Break` |
-| **Attestation Submission** (`submit_attestation`) | **Role-Specific Authorized Principal** | `Owner`: requires `owner.require_auth()`; `Counterparty`: requires `counterparty.require_auth()`; `Observer`: requires active registered `observer.require_auth()` matching case observer; non-zero commitment; at most one attestation per role |
-| **Dispute Opening** (`open_dispute`) | **Case Owner or Counterparty** (`initiator.require_auth()`) | Case must be in `Break` state; non-zero `dispute_commitment`; transitions state to `Disputed` |
-| **Dispute Resolution** (`submit_resolution`) | **Case Owner or Counterparty** (`resolver.require_auth()`) | Case must be in `Disputed` state; non-zero `resolution_commitment`; transitions to `Resolved` **only when both parties submit identical commitments** |
-| **Case Finalization** (`finalize_case`) | **Case Owner** (`owner.require_auth()`) | Case must be in `Matched` (requires Owner + Observer attestations) or `Resolved` (requires Owner + Counterparty + Observer attestations); observer must still be active |
+| **Attestation Submission** (`submit_attestation`) | **Role-Specific Authorized Principal** | `Owner`: requires `owner.require_auth()`; `Counterparty`: requires `counterparty.require_auth()`; `Observer`: requires active registered `observer.require_auth()`; case must not be `Finalized`; non-zero commitment; observers bounded by `MAX_OBSERVERS_PER_CASE` (16) |
+| **Observer Quorum Attestation** (`submit_observer_attestation`) | **Registered Observer** (`require_observer_auth()`) | Case must not be `Finalized`; non-zero commitment; caller must be an active registered observer at submission time; owner and counterparty cannot attest as observers; records distinct observer address towards M-of-N quorum (bounded by `MAX_OBSERVERS_PER_CASE` = 16) |
+| **Dispute Opening** (`open_dispute` / `open_dispute_with_ttl`) | **Case Owner or Counterparty** (`initiator.require_auth()`) | Case must be in `Break` state; requires counterparty (`counterparty.is_some()`); non-zero `dispute_commitment`; records expiration ledger (`current_ledger + ttl_ledgers`, bounded by `MIN_DISPUTE_TTL_LEDGERS` (120) and `MAX_DISPUTE_TTL_LEDGERS` (518,400); default 17,280 ledgers / ~24 hours); transitions state to `Disputed` |
+| **Dispute Resolution** (`submit_resolution`) | **Case Owner or Counterparty** (`resolver.require_auth()`) | Case must be in `Disputed` state; `current_ledger < expiration_ledger` (rejects expired disputes with `DisputeAlreadyExpired`); non-zero `resolution_commitment`; transitions to `Resolved` **only when both parties submit identical commitments**; clears dispute expiration |
+| **Dispute Expiration / Timeout** (`expire_dispute`) | **Anyone (Permissionless)** | Case must be in `Disputed` state; `current_ledger >= dispute_expires_at_ledger`; transitions state deterministically back to `Break`; clears pending resolution submissions and dispute expiration; emits `DisputeExpired`; does not forge mutual agreement |
+| **Case Finalization** (`finalize_case`) | **Case Owner** (`owner.require_auth()`) | Pure M-of-N quorum: case must be in `Matched` (requires Owner attestation + M distinct valid observer attestations satisfying quorum) or `Resolved` (requires Owner + Counterparty + M distinct valid observer attestations satisfying quorum); authorization is checked at attestation submission time and historical recorded attestations remain valid even if the observer is subsequently revoked. Neither Owner nor Counterparty can satisfy observer quorum |
 
 ---
 
@@ -35,14 +38,16 @@ The `SettlementRegistry` contract enforces strict role-based access control, cry
 
 - **Legal State Transitions**:
   ```text
-  Open ──► Observed ──┬──► Matched ──────────► Finalized
+  Open ──► Observed ──┬──► Matched ─────────────────────────────────► Finalized
                       │
-                      └──► Break ──► Disputed ──► Resolved ──► Finalized
+                      └──► Break ──► Disputed ──► Resolved ─────────► Finalized
+                             ▲          │
+                             └──(TTL)───┘ (expire_dispute)
   ```
 - **Terminal Immutability**:
   - Once a settlement case reaches `Finalized`, it enters a permanently terminal, read-only state.
-  - No subsequent observations, reconciliation decisions, attestations, disputes, resolutions, or finalizations can mutate a finalized case.
-  - The contract contains **no backdoors, administrative state overrides, or emergency mutation bypasses**.
+  - No subsequent observations, reconciliation decisions, attestations, disputes, resolutions, quorum adjustments, or finalizations can mutate a finalized case.
+  - The contract contains **no backdoors, administrative state overrides, or emergency mutation bypasses** (contract administration is strictly restricted to observer registry management and cannot alter case data, override decisions, or mutate settlement records).
 
 ---
 
@@ -51,11 +56,13 @@ The `SettlementRegistry` contract enforces strict role-based access control, cry
 Every state-mutating transition emits a typed Soroban contract event:
 - `ObserverAdded` / `ObserverRemoved`
 - `CaseCreated`
+- `CaseQuorumSet`
 - `ObservationRecorded`
 - `CaseMatched` / `CaseBroken`
 - `AttestationSubmitted`
 - `DisputeOpened`
 - `ResolutionSubmitted` / `DisputeResolved`
+- `DisputeExpired`
 - `CaseFinalized`
 
 ---
@@ -83,9 +90,38 @@ Every state-mutating transition emits a typed Soroban contract event:
 
 ---
 
-## Reporting Security Vulnerabilities
+---
 
-Please report security issues using **GitHub Private Vulnerability Reporting**:
-1. Navigate to the repository's **Security** tab on GitHub.
-2. Click on **Advisories** and select **Report a vulnerability**.
-3. Provide detailed steps to reproduce the issue, environment details, test cases, and potential impact.
+## Security Scope
+
+### In-Scope
+- `contracts/settlement-registry/src/lib.rs` (contract entrypoints and interface)
+- `contracts/settlement-registry/src/auth.rs` (role-based authentication & authorization invariants)
+- `contracts/settlement-registry/src/storage.rs` (state persistence & key management)
+- `contracts/settlement-registry/src/types.rs` (protocol data types & status transitions)
+- `contracts/settlement-registry/src/events.rs` (event schemas & emission completeness)
+- `contracts/settlement-registry/src/errors.rs` (error handling & state invariants)
+
+### Out-of-Scope
+- Stellar Core consensus protocol & Soroban host environment internals
+- Upstream Rust compiler and third-party dependencies (`soroban-sdk`)
+- Off-chain mock test harness and fixture generators
+- Client-side application integrations (see [`StellarClear/stellarclear-app`](https://github.com/StellarClear/stellarclear-app) for service-level security)
+
+---
+
+## Reporting Security Vulnerabilities & Responsible Disclosure
+
+We take the security of StellarClear seriously. If you discover a vulnerability, please report it responsibly:
+
+1. **GitHub Security Advisory (Preferred)**:
+   - Navigate to the repository's [Security Advisories](https://github.com/StellarClear/stellarclear-contract/security/advisories) tab.
+   - Click **"Report a vulnerability"** to submit a private disclosure.
+2. **Direct Security Contact**:
+   - **Email**: `security@stellarclear.org` / `adejumooluwasegun35@gmail.com`
+   - **GitHub**: [@Adejumo-2](https://github.com/Adejumo-2) or [@smog123](https://github.com/smog123)
+3. **Disclosure Timeline**:
+   - We will acknowledge receipt of your report within **24 hours**.
+   - We will provide an assessment and mitigation plan within **72 hours**.
+   - Please do not disclose vulnerabilities publicly until a patch has been released and verified.
+
