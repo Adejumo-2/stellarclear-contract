@@ -118,7 +118,7 @@ We take the security of StellarClear seriously. If you discover a vulnerability,
    - Navigate to the repository's [Security Advisories](https://github.com/StellarClear/stellarclear-contract/security/advisories) tab.
    - Click **"Report a vulnerability"** to submit a private disclosure.
 2. **Direct Security Contact**:
-   - **Email**: `security@stellarclear.org` / `adejumooluwasegun35@gmail.com`
+   - **Email**: `security@stellarclear.io` / `adejumooluwasegun35@gmail.com`
    - **GitHub**: [@Adejumo-2](https://github.com/Adejumo-2) or [@smog123](https://github.com/smog123)
 3. **Disclosure Timeline**:
    - We will acknowledge receipt of your report within **24 hours**.
